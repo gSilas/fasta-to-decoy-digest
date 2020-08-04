@@ -1,29 +1,107 @@
 package de.ovgu.mpa.validator;
 
+import static java.nio.file.StandardCopyOption.*;
+import org.apache.commons.cli.*;
 import java.io.*;
-import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class App {
-    public static void main(String[] args) {
-        File file = new File(
-                "/Users/dan/Downloads/uniprot-filtered-organism__Homo+sapiens+(Human)+[9606]_+AND+review--.fasta");
-        /*
-         * try { PeptideGenerator proteinDigester = new PeptideGenerator();
-         * proteinDigester.createFiles("/Users/dan/results/", "/Users/dan/batches/",
-         * file); } catch (IOException e) { e.printStackTrace(); }
-         */
 
-        FASTAFileReader fReader;
+    public static void main(String[] args) {
+
+        Options options = new Options();
+
+        Option fasta = new Option("f", "read_fasta", true, "fasta file path");
+        fasta.setRequired(true);
+        options.addOption(fasta);
+
+        Option compare = new Option("c", "compare_dbs", false, "paths to db1 abd db2");
+        compare.setRequired(true);
+        options.addOption(compare);
+
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+        CommandLine cmd = null;
+
         try {
-            fReader = new FASTAFileReader(file);
-            fReader.open();
-            ArrayList<Protein> pList = new ArrayList<Protein>();
-            while(fReader.hasNext()) {
-                FastaProtein prot = fReader.next();
-                pList.add(new DecoyProtein(prot));
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("Fasta DB Compare", options);
+            System.exit(1);
+        }
+
+        File batchDir = new File("tmp_batches");
+        if (!batchDir.exists())
+            batchDir.mkdir();
+        File fastaFolder = new File("fasta");
+        if (!fastaFolder.exists())
+            fastaFolder.mkdir();
+        File resultsFolder = new File("results");
+        if (!resultsFolder.exists())
+            resultsFolder.mkdir();
+
+        // Create Target and Decoy Folder
+        String fileName = cmd.getOptionValue("read_fasta").split("/")[cmd.getOptionValue("read_fasta").split("/").length
+                - 1].split("\\.")[0];
+        File targetFolder = new File(fastaFolder.getPath() + "/" + fileName);
+        if (!targetFolder.exists())
+            targetFolder.mkdir();
+        File decoyFolder = new File(fastaFolder.getPath() + "/" + fileName + "_decoy");
+        if (!decoyFolder.exists())
+            decoyFolder.mkdir();
+
+        if (cmd.hasOption("read_fasta")) {
+            processFasta(targetFolder.toString(), decoyFolder.toString(), cmd.getOptionValue("read_fasta"),
+                    batchDir.toString(), fastaFolder);
+            if (cmd.hasOption("compare_dbs")) {
+                compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString());
             }
-            FASTAWriter fWriter = new FASTAWriter("/Users/dan/meme.fasta");
-            fWriter.write(pList);
+        } else {
+            formatter.printHelp("Fasta DB Compare", options);
+            System.exit(1);
+        }
+    }
+
+    public static void processFasta(String targetFolder, String decoyFolder, String fastaPath, String batchFolder,
+            File fastaFolder) {
+        // Copy Fasta
+        Path source = Paths.get(fastaPath);
+        Path target = Paths.get(targetFolder + "/" + fastaPath.split("/")[fastaPath.split("/").length - 1]);
+        try {
+            Files.copy(source, target, REPLACE_EXISTING);
+        } catch (IOException e2) {
+            e2.printStackTrace();
+        }
+        // process fasta
+        PeptideWriter writer = new PeptideWriter();
+        try {
+            writer.createFiles(targetFolder, batchFolder, target.toFile());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // create decoy
+        DecoyGenerator.generateReverseDecoyDatabase(target,
+                Paths.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]));
+
+        File batchDir = new File("tmp_batches");
+        if (!batchDir.exists())
+            batchDir.mkdir();
+
+        try {
+            writer.createFiles(decoyFolder, batchFolder, target.toFile());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void compareDB(String targetFolder, String decoyFolder, String resultsFolder) {
+        Statistics stats = new Statistics();
+        try {
+            stats.comparePeptides(decoyFolder + "/NonRedundant.pep", targetFolder + "/NonRedundant.pep", resultsFolder);
         } catch (IOException e) {
             e.printStackTrace();
         }

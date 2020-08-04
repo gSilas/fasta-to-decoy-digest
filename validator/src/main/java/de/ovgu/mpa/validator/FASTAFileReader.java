@@ -46,7 +46,7 @@ public class FASTAFileReader implements Iterator<FastaProtein> {
 			while (line != null) {
 				if (line.startsWith(">") && this.nextDescription != null) {
 					// next protein
-					this.currentProtein.setDescription(nextDescription);
+					this.currentProtein.setDescription(nextDescription.substring(1));
 					this.nextDescription = line;
 					return true;
 				} else if (line.startsWith(">") && this.nextDescription == null) {
@@ -59,7 +59,7 @@ public class FASTAFileReader implements Iterator<FastaProtein> {
 				line = this.fastaReader.readLine();
 				if (line == null) {
 					// last protein
-					this.currentProtein.setDescription(nextDescription);
+					this.currentProtein.setDescription(nextDescription.substring(1));
 					return true;
 				}
 			}

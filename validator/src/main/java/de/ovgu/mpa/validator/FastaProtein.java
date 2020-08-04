@@ -2,7 +2,7 @@ package de.ovgu.mpa.validator;
 
 import java.util.LinkedList;
 
-public class FastaProtein extends Protein{
+public class FastaProtein extends Protein {
 	
 	public FastaProtein() {
 		this.peptides = new LinkedList<>();

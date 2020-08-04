@@ -17,7 +17,7 @@ public class FASTAWriter {
         }
     }
 
-    public void write(ArrayList<Protein> pL) throws IOException{
+    public void write(ArrayList<? extends Protein> pL) throws IOException{
         for (Protein prot : pL) {
             bw.write(">" + prot.getDescription() + "\n");
             bw.write(prot.getSequence() + "\n");
