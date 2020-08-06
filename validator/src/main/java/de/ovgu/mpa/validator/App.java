@@ -14,11 +14,11 @@ public class App {
         Options options = new Options();
 
         Option fasta = new Option("f", "read_fasta", true, "fasta file path");
-        fasta.setRequired(true);
+        fasta.setRequired(false);
         options.addOption(fasta);
 
-        Option compare = new Option("c", "compare_dbs", false, "paths to db1 abd db2");
-        compare.setRequired(true);
+        Option compare = new Option("c", "compare_dbs", true, "paths to db1 abd db2");
+        compare.setRequired(false);
         options.addOption(compare);
 
         CommandLineParser parser = new DefaultParser();
@@ -33,32 +33,35 @@ public class App {
             System.exit(1);
         }
 
-        File batchDir = new File("tmp_batches");
-        if (!batchDir.exists())
-            batchDir.mkdir();
-        File fastaFolder = new File("fasta");
-        if (!fastaFolder.exists())
-            fastaFolder.mkdir();
-        File resultsFolder = new File("results");
-        if (!resultsFolder.exists())
-            resultsFolder.mkdir();
-
-        // Create Target and Decoy Folder
-        String fileName = cmd.getOptionValue("read_fasta").split("/")[cmd.getOptionValue("read_fasta").split("/").length
-                - 1].split("\\.")[0];
-        File targetFolder = new File(fastaFolder.getPath() + "/" + fileName);
-        if (!targetFolder.exists())
-            targetFolder.mkdir();
-        File decoyFolder = new File(fastaFolder.getPath() + "/" + fileName + "_decoy");
-        if (!decoyFolder.exists())
-            decoyFolder.mkdir();
-
         if (cmd.hasOption("read_fasta")) {
+            File batchDir = new File("tmp_batches");
+            if (!batchDir.exists())
+                batchDir.mkdir();
+            File fastaFolder = new File("fasta");
+            if (!fastaFolder.exists())
+                fastaFolder.mkdir();
+
+            // Create Target and Decoy Folder
+            String fileName = cmd.getOptionValue("read_fasta")
+                    .split("/")[cmd.getOptionValue("read_fasta").split("/").length - 1].split("\\.")[0];
+            File targetFolder = new File(fastaFolder.getPath() + "/" + fileName);
+            if (!targetFolder.exists())
+                targetFolder.mkdir();
+            File decoyFolder = new File(fastaFolder.getPath() + "/" + fileName + "_decoy");
+            if (!decoyFolder.exists())
+                decoyFolder.mkdir();
+
             processFasta(targetFolder.toString(), decoyFolder.toString(), cmd.getOptionValue("read_fasta"),
                     batchDir.toString(), fastaFolder);
-            if (cmd.hasOption("compare_dbs")) {
-                compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString());
-            }
+        } else if (cmd.hasOption("compare_dbs")) {
+            File resultsFolder = new File("results");
+            if (!resultsFolder.exists())
+                resultsFolder.mkdir();
+
+            String targetFolder = cmd.getOptionValue("compare_dbs").split(" ")[0];
+            String decoyFolder = cmd.getOptionValue("compare_dbs").split(" ")[1];
+            compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString());
+
         } else {
             formatter.printHelp("Fasta DB Compare", options);
             System.exit(1);
@@ -87,12 +90,13 @@ public class App {
         DecoyGenerator.generateReverseDecoyDatabase(target,
                 Paths.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]));
 
+        writer = new PeptideWriter();
         File batchDir = new File("tmp_batches");
         if (!batchDir.exists())
             batchDir.mkdir();
 
         try {
-            writer.createFiles(decoyFolder, batchFolder, target.toFile());
+            writer.createFiles(decoyFolder, batchFolder, Paths.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]).toFile());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -101,7 +105,7 @@ public class App {
     public static void compareDB(String targetFolder, String decoyFolder, String resultsFolder) {
         Statistics stats = new Statistics();
         try {
-            stats.comparePeptides(decoyFolder + "/NonRedundant.pep", targetFolder + "/NonRedundant.pep", resultsFolder);
+            stats.comparePeptides(decoyFolder, targetFolder, resultsFolder);
         } catch (IOException e) {
             e.printStackTrace();
         }
