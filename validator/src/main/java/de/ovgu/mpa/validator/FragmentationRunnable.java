@@ -1,12 +1,26 @@
 package de.ovgu.mpa.validator;
 
 import java.util.Arrays;
+import java.util.concurrent.Callable;
 
-public class FragmentationCalculator {
+public class FragmentationRunnable implements Callable<double[]> {
 
-	private final static double PROTON = 1.007276;
-	
-	public static double getAAMass(char c) {
+    private final double PROTON = 1.007276;
+
+    String peptideSequence;
+
+
+    public FragmentationRunnable(String peptideSequence) {
+        this.peptideSequence = peptideSequence;
+    }
+
+
+    @Override
+    public double[] call() throws Exception {
+        return fragmentIonBY(this.peptideSequence);
+    }
+    
+    public static double getAAMass(char c) {
 		switch (c) {
 			case 'A': return 71.03712;
 			case 'B': return 114.1038;	// This value is not used: see Note 1 at the end of this method.
@@ -39,14 +53,12 @@ public class FragmentationCalculator {
 		}
 		return 0.0;
 	}
-    
-    public static void getFragmentIons(String peptideSequence, double[] fragmentIons) {
-		fragmentIonBY(peptideSequence, fragmentIons);
-		Arrays.sort(fragmentIons);
-	}
 	
 
-	private static void fragmentIonBY(String pepSeq, double[] fragmentIons) {
+	private double[] fragmentIonBY(String pepSeq) {
+
+        double[] fragmentIons = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
+
 		int a = 0;
 		int lCount = 0;
 		
@@ -75,8 +87,10 @@ public class FragmentationCalculator {
 		while (lCount < ValidatorConfig.MAXIMUM_PEP_LENGTH * 4) {
 			fragmentIons[lCount] = Double.POSITIVE_INFINITY;
 			lCount++;
-		}
+        }
+        
+        Arrays.sort(fragmentIons);
+        return fragmentIons;
 
 	}
-	
 }

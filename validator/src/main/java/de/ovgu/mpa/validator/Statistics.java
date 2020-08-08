@@ -35,7 +35,7 @@ public class Statistics {
             HashMap<Integer, Integer> fragmentMatchMap) {
         // MATCH
         FragmentationCalculator.getFragmentIons(targetSequence, targetIons);
-        
+
         if (!decoyIonMap.containsKey(decoySequence)) {
             FragmentationCalculator.getFragmentIons(decoySequence, decoyIons);
             decoyIonMap.put(decoySequence, decoyIons.clone());
@@ -80,6 +80,7 @@ public class Statistics {
 
                 targetIon = targetIons[indexTarget];
             }
+
         }
 
         double cosineSimilarity = fragmentMatch
@@ -219,6 +220,7 @@ public class Statistics {
             }
         }
 
+        // TODO: Check this condition
         if (decoyLine == null) {
             while (!decoyMassWindow.isEmpty()) {
                 for (int i = 0; i < decoySequenceWindow.size(); i++) {
@@ -293,8 +295,8 @@ public class Statistics {
         final List<String[]> cosineSimilarityBinsLines = new ArrayList<>();
         cosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
         for (int i = 0; i < cosineSimilarityBins.length; i++) {
-            cosineSimilarityBinsLines
-                    .add(new String[] { Double.toString((double) i / 10.0), Integer.toString(cosineSimilarityBins[i]) });
+            cosineSimilarityBinsLines.add(
+                    new String[] { Double.toString((double) i / 10.0), Integer.toString(cosineSimilarityBins[i]) });
         }
 
         final CSVWriter writer = new CSVWriter();
