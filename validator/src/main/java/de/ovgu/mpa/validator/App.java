@@ -6,6 +6,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.ExecutionException;
 
 public class App {
 
@@ -21,6 +22,14 @@ public class App {
         compare.setRequired(false);
         options.addOption(compare);
 
+        Option excludeX = new Option("ex", "exclude_x", false, "exclude peptides with unkown amino acids; requires read_fasta");
+        compare.setRequired(false);
+        options.addOption(excludeX);
+
+        Option timer = new Option("t", "timer", false, "time execution");
+        compare.setRequired(false);
+        options.addOption(timer);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         CommandLine cmd = null;
@@ -32,6 +41,13 @@ public class App {
             formatter.printHelp("Fasta DB Compare", options);
             System.exit(1);
         }
+
+        if(cmd.hasOption("exclude_x")) {
+            System.out.println("Excluding X");
+            ValidatorConfig.excludeX = true;
+        }
+
+        long startTime = System.currentTimeMillis();
 
         if (cmd.hasOption("read_fasta")) {
             File batchDir = new File("tmp_batches");
@@ -66,6 +82,10 @@ public class App {
             formatter.printHelp("Fasta DB Compare", options);
             System.exit(1);
         }
+
+        if(cmd.hasOption("timer")) {
+            System.out.println("execution time: " + ((double) System.currentTimeMillis() - (double) startTime) / 1000.0 + " seconds");
+        }
     }
 
     public static void processFasta(String targetFolder, String decoyFolder, String fastaPath, String batchFolder,
@@ -96,17 +116,19 @@ public class App {
             batchDir.mkdir();
 
         try {
-            writer.createFiles(decoyFolder, batchFolder, Paths.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]).toFile());
+            writer.createFiles(decoyFolder, batchFolder, Paths
+                    .get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]).toFile());
         } catch (IOException e) {
             e.printStackTrace();
         }
+
     }
 
     public static void compareDB(String targetFolder, String decoyFolder, String resultsFolder) {
         Statistics stats = new Statistics();
         try {
             stats.comparePeptides(decoyFolder, targetFolder, resultsFolder);
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException | ExecutionException e) {
             e.printStackTrace();
         }
     }

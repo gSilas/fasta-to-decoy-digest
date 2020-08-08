@@ -50,6 +50,7 @@ public class PeptideWriter {
 		BufferedWriter bw = new BufferedWriter(new FileWriter(new File(batchFiles + batchcount + ".pep")));
 		while (fr.hasNext()) {
 			Protein fastaProtein = fr.next();
+
 			if (!proteinLengthMap.containsKey(fastaProtein.sequence.length())) {
 				proteinLengthMap.put(fastaProtein.sequence.length(), 1);
 			} else {
@@ -57,8 +58,10 @@ public class PeptideWriter {
 				proteinLengthMap.put(fastaProtein.sequence.length(), oldVal + 1);
 			}
 			proteinCount++;
+
 			LinkedList<String> peptideList = fastaProtein.getPeptides();
 			for (String peptideString : peptideList) {
+
 				peptideCount++;
 				if (peptideCount % batchSize == 0) {
 					System.out.println(peptideCount + " peptides processed");

@@ -8,3 +8,5 @@
 # Approach 3
 * Lite parallel
 * do processing of decoy directly after selection into window
+
+# calc target ions to decoy windows > calc match

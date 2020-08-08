@@ -10,112 +10,49 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Statistics {
 
-    private final double[] sqrtLookup;
+    ExecutorService pool;
 
-    private double[] targetIons;
-    private double[] decoyIons;
-
-    private HashMap<String, double[]> decoyIonMap;
+    double[] sqrtLookup;
 
     public Statistics() {
+        this.pool = Executors.newCachedThreadPool();
         sqrtLookup = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
+
         for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH * 4; i++) {
             sqrtLookup[i] = Math.sqrt(i);
         }
-
-        targetIons = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
-        decoyIons = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
-        decoyIonMap = new HashMap<String, double[]>();
-    }
-
-    private double matchPeptides(double tolerance, String targetSequence, String decoySequence,
-            HashMap<Integer, Integer> fragmentMatchMap) {
-        // MATCH
-        FragmentationCalculator.getFragmentIons(targetSequence, targetIons);
-
-        if (!decoyIonMap.containsKey(decoySequence)) {
-            FragmentationCalculator.getFragmentIons(decoySequence, decoyIons);
-            decoyIonMap.put(decoySequence, decoyIons.clone());
-        } else {
-            decoyIons = decoyIonMap.get(decoySequence);
-        }
-
-        int indexDecoy = 0;
-        int indexTarget = 0;
-        int fragmentMatch = 0;
-
-        double decoyIon = decoyIons[0];
-        double targetIon = targetIons[0];
-
-        while (true) {
-            if (targetIon <= decoyIon + tolerance && targetIon >= decoyIon - tolerance) {
-                fragmentMatch++;
-                indexTarget++;
-                indexDecoy++;
-
-                if (indexDecoy >= decoySequence.length() || indexTarget >= targetSequence.length()) {
-                    break;
-                }
-
-                decoyIon = decoyIons[indexDecoy];
-                targetIon = targetIons[indexTarget];
-
-            } else if (targetIon > decoyIon + tolerance) {
-                indexDecoy++;
-
-                if (indexDecoy >= decoySequence.length()) {
-                    break;
-                }
-
-                decoyIon = decoyIons[indexDecoy];
-            } else if (targetIon < decoyIon - tolerance) {
-                indexTarget++;
-
-                if (indexTarget >= targetSequence.length()) {
-                    break;
-                }
-
-                targetIon = targetIons[indexTarget];
-            }
-
-        }
-
-        double cosineSimilarity = fragmentMatch
-                / (sqrtLookup[targetSequence.length()] * sqrtLookup[decoySequence.length()]);
-
-        if (fragmentMatchMap.containsKey(fragmentMatch)) {
-            fragmentMatchMap.put(fragmentMatch, fragmentMatchMap.get(fragmentMatch) + 1);
-        } else {
-            fragmentMatchMap.put(fragmentMatch, 1);
-        }
-
-        return cosineSimilarity;
     }
 
     public void comparePeptides(final String decoyPeptides, final String targetPeptides, String folder)
-            throws IOException {
+            throws IOException, InterruptedException, ExecutionException {
         final BufferedReader brD = new BufferedReader(new FileReader(new File(decoyPeptides)));
         final BufferedReader brT = new BufferedReader(new FileReader(new File(targetPeptides)));
         final double tolerance = 0.1;
         final double greatMatchTolerance = 0.5;
-        int matchCounter = 0;
-        int greatMatchCounter = 0;
+        long matchCounter = 0;
+        long greatMatchCounter = 0;
 
         // <length, target proteins>
-        int[] lengthTargetArray = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+        long[] lengthTargetArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
 
         // <length, decoy proteins>
-        int[] lengthDecoyArray = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+        long[] lengthDecoyArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
 
         // <length, bins>
-        int[][] lengthBinMatrix = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH][11];
+        long[][] lengthBinMatrix = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH][11];
 
         // <length, great matches>
         // HashMap<Integer, Integer> lengthMap = new HashMap<>();
-        int[] lengthMatchArray = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+        long[] lengthMatchArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+
+        long[] cosineSimilarityBins = new long[11];
 
         String targetLine = brT.readLine();
         String[] targetSplit = targetLine.split(";");
@@ -134,10 +71,12 @@ public class Statistics {
         // <FragmentMatches, Occurences>
         HashMap<Integer, Integer> fragmentMatchMap = new HashMap<>();
 
-        int[] cosineSimilarityBins = new int[11];
-
         LinkedList<String> decoySequenceWindow = new LinkedList<String>();
         LinkedList<Double> decoyMassWindow = new LinkedList<Double>();
+
+        LinkedList<Future<double[]>> asyncDecoyIonsList = new LinkedList<Future<double[]>>();
+        LinkedList<Future<Double>> asyncMatchList = new LinkedList<Future<Double>>();
+        Future<double[]> targetIons = pool.submit(new FragmentationCallable(targetSequence));
 
         while (true) {
 
@@ -146,6 +85,9 @@ public class Statistics {
 
                 decoySequenceWindow.add(decoySequence);
                 decoyMassWindow.add(decoyMass);
+                Future<double[]> decoyIonsFuture = pool.submit(new FragmentationCallable(decoySequence));
+                asyncDecoyIonsList.add(decoyIonsFuture);
+                asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
 
                 decoyLine = brD.readLine();
 
@@ -153,7 +95,6 @@ public class Statistics {
                     break;
 
                 decoySplit = decoyLine.split(";");
-                // splitPeptideLine(decoyLine, ';', decoySplit);
                 decoySequence = decoySplit[0];
                 decoyMass = Double.valueOf(decoySplit[1]);
                 lengthDecoyArray[decoySequence.length()]++;
@@ -166,7 +107,6 @@ public class Statistics {
                     break;
 
                 decoySplit = decoyLine.split(";");
-                // splitPeptideLine(decoyLine, ';', decoySplit);
                 decoySequence = decoySplit[0];
                 decoyMass = Double.valueOf(decoySplit[1]);
                 lengthDecoyArray[decoySequence.length()]++;
@@ -175,10 +115,9 @@ public class Statistics {
                 // target smaller than decoy
 
                 // calculate matches for decoys in window
-                for (int i = 0; i < decoySequenceWindow.size(); i++) {
-                    String sequence = decoySequenceWindow.get(i);
-                    double cosineSimilarity = matchPeptides(tolerance, targetSequence, sequence, fragmentMatchMap);
+                for (Future<Double> futureMatches : asyncMatchList) {
 
+                    double cosineSimilarity = futureMatches.get();
                     matchCounter++;
 
                     if (cosineSimilarity >= greatMatchTolerance) {
@@ -198,10 +137,11 @@ public class Statistics {
                     break;
 
                 targetSplit = targetLine.split(";");
-                // splitPeptideLine(targetLine, ';', targetSplit);
                 targetSequence = targetSplit[0];
                 targetMass = Double.valueOf(targetSplit[1]);
                 lengthTargetArray[targetSequence.length()]++;
+
+                targetIons = pool.submit(new FragmentationCallable(targetSequence));
 
                 // check if decoys in window don't match with target and remove unmatching
                 // decoys
@@ -211,21 +151,28 @@ public class Statistics {
                     if (targetMass > mass + tolerance) {
                         // target larger than decoy
                         decoyMassWindow.pop();
-                        String sequence = decoySequenceWindow.pop();
-                        decoyIonMap.remove(sequence);
+                        decoySequenceWindow.pop();
+                        asyncDecoyIonsList.pop();
                     } else {
                         break;
                     }
                 }
+
+                asyncMatchList.clear();
+
+                for (Future<double[]> decoyIonsFuture: asyncDecoyIonsList) {
+                    asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
+                }
+
             }
         }
 
         // TODO: Check this condition
         if (decoyLine == null) {
             while (!decoyMassWindow.isEmpty()) {
-                for (int i = 0; i < decoySequenceWindow.size(); i++) {
-                    String sequence = decoySequenceWindow.get(i);
-                    double cosineSimilarity = matchPeptides(tolerance, targetSequence, sequence, fragmentMatchMap);
+                for (Future<Double> futureMatches : asyncMatchList) {
+
+                    double cosineSimilarity = futureMatches.get();
 
                     matchCounter++;
 
@@ -246,10 +193,11 @@ public class Statistics {
                     break;
 
                 targetSplit = targetLine.split(";");
-                // splitPeptideLine(targetLine, ';', targetSplit);
                 targetSequence = targetSplit[0];
                 targetMass = Double.valueOf(targetSplit[1]);
                 lengthTargetArray[targetSequence.length()]++;
+
+                targetIons = pool.submit(new FragmentationCallable(targetSequence));
 
                 // check if decoys in window don't match with target and remove unmatching
                 // decoys
@@ -259,14 +207,22 @@ public class Statistics {
                     if (targetMass > mass + tolerance) {
                         // target larger than decoy
                         decoyMassWindow.pop();
-                        String sequence = decoySequenceWindow.pop();
-                        decoyIonMap.remove(sequence);
+                        decoySequenceWindow.pop();
+                        asyncDecoyIonsList.pop();
                     } else {
                         break;
                     }
                 }
+
+                asyncMatchList.clear();
+
+                for (Future<double[]> decoyIonsFuture: asyncDecoyIonsList) {
+                    asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
+                }
             }
         }
+
+        pool.shutdown();
 
         final List<String[]> lengthMatchLines = new ArrayList<>();
         final List<String[]> lengthCollectionLines = new ArrayList<>();
@@ -275,14 +231,14 @@ public class Statistics {
         lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins" });
 
         for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
-            lengthMatchLines.add(new String[] { Integer.toString(i), Integer.toString(lengthMatchArray[i]) });
+            lengthMatchLines.add(new String[] { Integer.toString(i), Long.toString(lengthMatchArray[i]) });
 
             String bString = "";
             for (int j = 0; j < 10; j++) {
                 bString += "," + lengthBinMatrix[i][j];
             }
-            lengthCollectionLines.add(new String[] { Integer.toString(i), Integer.toString(lengthTargetArray[i]),
-                    Integer.toString(lengthDecoyArray[i]), Integer.toString(lengthMatchArray[i]), bString });
+            lengthCollectionLines.add(new String[] { Integer.toString(i), Long.toString(lengthTargetArray[i]),
+                    Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString });
         }
         final List<String[]> fragmentMatchLines = new ArrayList<>();
         fragmentMatchLines.add(new String[] { "matches", "relative occurences" });
@@ -295,8 +251,8 @@ public class Statistics {
         final List<String[]> cosineSimilarityBinsLines = new ArrayList<>();
         cosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
         for (int i = 0; i < cosineSimilarityBins.length; i++) {
-            cosineSimilarityBinsLines.add(
-                    new String[] { Double.toString((double) i / 10.0), Integer.toString(cosineSimilarityBins[i]) });
+            cosineSimilarityBinsLines
+                    .add(new String[] { Double.toString((double) i / 10.0), Long.toString(cosineSimilarityBins[i]) });
         }
 
         final CSVWriter writer = new CSVWriter();
