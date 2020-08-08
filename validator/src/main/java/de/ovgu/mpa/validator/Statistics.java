@@ -23,11 +23,64 @@ public class Statistics {
 
     public Statistics() {
         this.pool = Executors.newCachedThreadPool();
+
         sqrtLookup = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
 
         for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH * 4; i++) {
             sqrtLookup[i] = Math.sqrt(i);
         }
+
+    }
+
+    public Double matchIons(Future<double[]> decoyIonsFuture, Future<double[]> targetIonsFuture, double tolerance)
+            throws InterruptedException, ExecutionException {
+
+        double[] decoyIons = decoyIonsFuture.get();
+        double[] targetIons = targetIonsFuture.get();
+
+        int indexDecoy = 0;
+        int indexTarget = 0;
+        int fragmentMatch = 0;
+
+        double decoyIon = decoyIons[0];
+        double targetIon = targetIons[0];
+
+        while (true) {
+            if (targetIon <= decoyIon + tolerance && targetIon >= decoyIon - tolerance) {
+                fragmentMatch++;
+                indexTarget++;
+                indexDecoy++;
+
+                if (indexDecoy >= decoyIons.length || indexTarget >= targetIons.length) {
+                    break;
+                }
+
+                decoyIon = decoyIons[indexDecoy];
+                targetIon = targetIons[indexTarget];
+
+            } else if (targetIon > decoyIon + tolerance) {
+                indexDecoy++;
+
+                if (indexDecoy >= decoyIons.length) {
+                    break;
+                }
+
+                decoyIon = decoyIons[indexDecoy];
+            } else if (targetIon < decoyIon - tolerance) {
+                indexTarget++;
+
+                if (indexTarget >= targetIons.length) {
+                    break;
+                }
+
+                targetIon = targetIons[indexTarget];
+            }
+
+        }
+
+        double cosineSimilarity = fragmentMatch / (sqrtLookup[targetIons.length] * sqrtLookup[decoyIons.length]);
+
+        return cosineSimilarity;
     }
 
     public void comparePeptides(final String decoyPeptides, final String targetPeptides, String folder)
@@ -75,8 +128,7 @@ public class Statistics {
         LinkedList<Double> decoyMassWindow = new LinkedList<Double>();
 
         LinkedList<Future<double[]>> asyncDecoyIonsList = new LinkedList<Future<double[]>>();
-        LinkedList<Future<Double>> asyncMatchList = new LinkedList<Future<Double>>();
-        Future<double[]> targetIons = pool.submit(new FragmentationCallable(targetSequence));
+        Future<double[]> targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
 
         while (true) {
 
@@ -87,7 +139,6 @@ public class Statistics {
                 decoyMassWindow.add(decoyMass);
                 Future<double[]> decoyIonsFuture = pool.submit(new FragmentationCallable(decoySequence));
                 asyncDecoyIonsList.add(decoyIonsFuture);
-                asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
 
                 decoyLine = brD.readLine();
 
@@ -115,9 +166,8 @@ public class Statistics {
                 // target smaller than decoy
 
                 // calculate matches for decoys in window
-                for (Future<Double> futureMatches : asyncMatchList) {
-
-                    double cosineSimilarity = futureMatches.get();
+                for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
+                    double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
                     matchCounter++;
 
                     if (cosineSimilarity >= greatMatchTolerance) {
@@ -141,7 +191,7 @@ public class Statistics {
                 targetMass = Double.valueOf(targetSplit[1]);
                 lengthTargetArray[targetSequence.length()]++;
 
-                targetIons = pool.submit(new FragmentationCallable(targetSequence));
+                targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
 
                 // check if decoys in window don't match with target and remove unmatching
                 // decoys
@@ -158,22 +208,14 @@ public class Statistics {
                     }
                 }
 
-                asyncMatchList.clear();
-
-                for (Future<double[]> decoyIonsFuture: asyncDecoyIonsList) {
-                    asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
-                }
-
             }
         }
 
-        // TODO: Check this condition
         if (decoyLine == null) {
             while (!decoyMassWindow.isEmpty()) {
-                for (Future<Double> futureMatches : asyncMatchList) {
 
-                    double cosineSimilarity = futureMatches.get();
-
+                for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
+                    double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
                     matchCounter++;
 
                     if (cosineSimilarity >= greatMatchTolerance) {
@@ -184,7 +226,6 @@ public class Statistics {
                     int bin = (int) (cosineSimilarity * 10);
                     cosineSimilarityBins[bin]++;
                     lengthBinMatrix[targetSequence.length()][bin]++;
-
                 }
 
                 targetLine = brT.readLine();
@@ -197,7 +238,7 @@ public class Statistics {
                 targetMass = Double.valueOf(targetSplit[1]);
                 lengthTargetArray[targetSequence.length()]++;
 
-                targetIons = pool.submit(new FragmentationCallable(targetSequence));
+                targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
 
                 // check if decoys in window don't match with target and remove unmatching
                 // decoys
@@ -213,14 +254,10 @@ public class Statistics {
                         break;
                     }
                 }
-
-                asyncMatchList.clear();
-
-                for (Future<double[]> decoyIonsFuture: asyncDecoyIonsList) {
-                    asyncMatchList.add(pool.submit(new MatchCallable(decoyIonsFuture, targetIons, tolerance)));
-                }
             }
         }
+
+        System.out.println("Finished reading target & decoy lists");
 
         pool.shutdown();
 

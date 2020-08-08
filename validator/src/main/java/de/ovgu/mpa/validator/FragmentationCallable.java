@@ -15,7 +15,36 @@ public class FragmentationCallable implements Callable<double[]> {
 
     @Override
     public double[] call() throws Exception {
-        return fragmentIonBY();
+        
+        double[] fragmentIons = new double[this.pepSequence.length() * 4];
+
+        int a = 0;
+        int lCount = 0;
+
+        // DEAL WITH PROTEIN N-TERMINUS
+        // dValue = 0.0;
+        // deal with non-hydrolytic cleavage
+        double bValue = 0.0;
+        double yValue = 18.010560035000001;
+
+        // MAIN LOOP
+        while (a <= this.pepSequence.length() - 1) {
+            bValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(a));
+            yValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(this.pepSequence.length() - 1 - a));
+            fragmentIons[lCount] = PROTON + bValue;
+            lCount++;
+            fragmentIons[lCount] = (PROTON * 2.0 + bValue) / 2.0;
+            lCount++;
+            fragmentIons[lCount] = PROTON + yValue;
+            lCount++;
+            fragmentIons[lCount] = (PROTON * 2.0 + yValue) / 2.0;
+            lCount++;
+
+            a++;
+        }
+
+        Arrays.sort(fragmentIons);
+        return fragmentIons;
     }
 
     public double getAAMass(char c) {
@@ -79,40 +108,6 @@ public class FragmentationCallable implements Callable<double[]> {
                 return 128.1307;
         }
         return 0.0;
-    }
-
-    private double[] fragmentIonBY() {
-
-        double[] fragmentIons = new double[this.pepSequence.length() * 4];
-
-        int a = 0;
-        int lCount = 0;
-
-        // DEAL WITH PROTEIN N-TERMINUS
-        // dValue = 0.0;
-        // deal with non-hydrolytic cleavage
-        double bValue = 0.0;
-        double yValue = 18.010560035000001;
-
-        // MAIN LOOP
-        while (a <= this.pepSequence.length() - 1) {
-            bValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(a));
-            yValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(this.pepSequence.length() - 1 - a));
-            fragmentIons[lCount] = PROTON + bValue;
-            lCount++;
-            fragmentIons[lCount] = (PROTON * 2.0 + bValue) / 2.0;
-            lCount++;
-            fragmentIons[lCount] = PROTON + yValue;
-            lCount++;
-            fragmentIons[lCount] = (PROTON * 2.0 + yValue) / 2.0;
-            lCount++;
-
-            a++;
-        }
-
-        Arrays.sort(fragmentIons);
-        return fragmentIons;
-
     }
 
 }
