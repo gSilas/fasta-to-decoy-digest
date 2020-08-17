@@ -2,20 +2,16 @@ package de.ovgu.mpa.validator;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-public class CompareTask implements Runnable {
+public class CompareTask implements Callable<CompareResult> {
 
 	ExecutorService pool;
 
@@ -23,27 +19,17 @@ public class CompareTask implements Runnable {
 
 	final String decoyPeptides; 
 	final String targetPeptides; 
-	String folder;
+	CompareResult result;
 
-	public CompareTask(String decoyPeptides, String targetPeptides, String folder) {
+	public CompareTask(String decoyPeptides, String targetPeptides) {
 		this.decoyPeptides = decoyPeptides;
 		this.targetPeptides = targetPeptides;
-		this.folder = folder;
 		this.pool = Executors.newCachedThreadPool();
 		sqrtLookup = new double[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
 		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH * 4; i++) {
 			sqrtLookup[i] = Math.sqrt(i);
 		}
-
-	}
-
-	@Override
-	public void run() {
-		try {
-			this.comparePeptides();
-		} catch (IOException | InterruptedException | ExecutionException e) {
-			e.printStackTrace();
-		}
+		this.result = new CompareResult();
 	}
 
 	public Double matchIons(Future<double[]> decoyIonsFuture, Future<double[]> targetIonsFuture, double tolerance)
@@ -100,44 +86,24 @@ public class CompareTask implements Runnable {
 	public void comparePeptides()
 			throws IOException, InterruptedException, ExecutionException {
 
-		final BufferedReader brD = new BufferedReader(new FileReader(new File(decoyPeptides + "/NonRedundant.pep")));
+		final BufferedReader brD = new BufferedReader(new FileReader(new File(decoyPeptides)));
 		final BufferedReader brT = new BufferedReader(new FileReader(new File(targetPeptides)));
 		final double tolerance = 0.1;
 		final double greatMatchTolerance = 0.5;
-		long matchCounter = 0;
-		long greatMatchCounter = 0;
-
-		// <length, target proteins>
-		long[] lengthTargetArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
-
-		// <length, decoy proteins>
-		long[] lengthDecoyArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
-
-		// <length, bins>
-		long[][] lengthBinMatrix = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH][11];
-
-		// <length, great matches>
-		// HashMap<Integer, Integer> lengthMap = new HashMap<>();
-		long[] lengthMatchArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
-
-		long[] cosineSimilarityBins = new long[11];
 
 		String targetLine = brT.readLine();
 		String[] targetSplit = targetLine.split(";");
 		String targetSequence = targetSplit[0];
 		Double targetMass = Double.valueOf(targetSplit[1]);
 
-		lengthTargetArray[targetSequence.length()]++;
+		result.lengthTargetArray[targetSequence.length()]++;
 
 		String decoyLine = brD.readLine();
 		String[] decoySplit = decoyLine.split(";");
 		String decoySequence = decoySplit[0];
 		Double decoyMass = Double.valueOf(decoySplit[1]);
 
-		lengthDecoyArray[decoySequence.length()]++;
-
-		// <FragmentMatches, Occurences>
-		HashMap<Integer, Integer> fragmentMatchMap = new HashMap<>();
+		result.lengthDecoyArray[decoySequence.length()]++;
 
 		LinkedList<String> decoySequenceWindow = new LinkedList<String>();
 		LinkedList<Double> decoyMassWindow = new LinkedList<Double>();
@@ -163,7 +129,7 @@ public class CompareTask implements Runnable {
 				decoySplit = decoyLine.split(";");
 				decoySequence = decoySplit[0];
 				decoyMass = Double.valueOf(decoySplit[1]);
-				lengthDecoyArray[decoySequence.length()]++;
+				result.lengthDecoyArray[decoySequence.length()]++;
 
 			} else if (targetMass > decoyMass + tolerance) {
 				// target larger than decoy
@@ -174,7 +140,7 @@ public class CompareTask implements Runnable {
 				decoySplit = decoyLine.split(";");
 				decoySequence = decoySplit[0];
 				decoyMass = Double.valueOf(decoySplit[1]);
-				lengthDecoyArray[decoySequence.length()]++;
+				result.lengthDecoyArray[decoySequence.length()]++;
 
 			} else if (targetMass < decoyMass - tolerance) {
 				// target smaller than decoy
@@ -182,16 +148,16 @@ public class CompareTask implements Runnable {
 				// calculate matches for decoys in window
 				for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
 					double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
-					matchCounter++;
+					result.matchCounter++;
 
 					if (cosineSimilarity >= greatMatchTolerance) {
-						lengthMatchArray[targetSequence.length()]++;
-						greatMatchCounter++;
+						result.lengthMatchArray[targetSequence.length()]++;
+						result.greatMatchCounter++;
 					}
 
 					int bin = (int) (cosineSimilarity * 10);
-					cosineSimilarityBins[bin]++;
-					lengthBinMatrix[targetSequence.length()][bin]++;
+					result.cosineSimilarityBins[bin]++;
+					result.lengthBinMatrix[targetSequence.length()][bin]++;
 				}
 
 				// get new target
@@ -203,7 +169,7 @@ public class CompareTask implements Runnable {
 				targetSplit = targetLine.split(";");
 				targetSequence = targetSplit[0];
 				targetMass = Double.valueOf(targetSplit[1]);
-				lengthTargetArray[targetSequence.length()]++;
+				result.lengthTargetArray[targetSequence.length()]++;
 
 				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
 
@@ -230,16 +196,16 @@ public class CompareTask implements Runnable {
 
 				for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
 					double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
-					matchCounter++;
+					result.matchCounter++;
 
 					if (cosineSimilarity >= greatMatchTolerance) {
-						lengthMatchArray[targetSequence.length()]++;
-						greatMatchCounter++;
+						result.lengthMatchArray[targetSequence.length()]++;
+						result.greatMatchCounter++;
 					}
 
 					int bin = (int) (cosineSimilarity * 10);
-					cosineSimilarityBins[bin]++;
-					lengthBinMatrix[targetSequence.length()][bin]++;
+					result.cosineSimilarityBins[bin]++;
+					result.lengthBinMatrix[targetSequence.length()][bin]++;
 				}
 
 				targetLine = brT.readLine();
@@ -250,7 +216,7 @@ public class CompareTask implements Runnable {
 				targetSplit = targetLine.split(";");
 				targetSequence = targetSplit[0];
 				targetMass = Double.valueOf(targetSplit[1]);
-				lengthTargetArray[targetSequence.length()]++;
+				result.lengthTargetArray[targetSequence.length()]++;
 
 				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
 
@@ -275,53 +241,18 @@ public class CompareTask implements Runnable {
 
 		pool.shutdown();
 
-		final List<String[]> lengthMatchLines = new ArrayList<>();
-		final List<String[]> lengthCollectionLines = new ArrayList<>();
-
-		lengthMatchLines.add(new String[] { "length", "matches" });
-		lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins" });
-
-		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
-			lengthMatchLines.add(new String[] { Integer.toString(i), Long.toString(lengthMatchArray[i]) });
-
-			String bString = "";
-			for (int j = 0; j < 10; j++) {
-				bString += "," + lengthBinMatrix[i][j];
-			}
-			lengthCollectionLines.add(new String[] { Integer.toString(i), Long.toString(lengthTargetArray[i]),
-					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString });
-		}
-		final List<String[]> fragmentMatchLines = new ArrayList<>();
-		fragmentMatchLines.add(new String[] { "matches", "relative occurences" });
-
-		for (final Map.Entry<Integer, Integer> entry : fragmentMatchMap.entrySet()) {
-			fragmentMatchLines.add(new String[] { entry.getKey().toString(),
-					Double.toString(100 * ((double) entry.getValue() / (double) matchCounter)) });
-		}
-
-		final List<String[]> cosineSimilarityBinsLines = new ArrayList<>();
-		cosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
-		for (int i = 0; i < cosineSimilarityBins.length; i++) {
-			cosineSimilarityBinsLines
-			.add(new String[] { Double.toString((double) i / 10.0), Long.toString(cosineSimilarityBins[i]) });
-		}
-
-		final CSVWriter writer = new CSVWriter();
-		try {
-			writer.createCSV(fragmentMatchLines, folder + "/" + "fragmentMatch.csv");
-			writer.createCSV(lengthMatchLines, folder + "/" + "lengthMatch.csv");
-			writer.createCSV(cosineSimilarityBinsLines, folder + "/" + "cosineSimilarityBins.csv");
-			writer.createCSV(lengthCollectionLines, folder + "/" + "lengthCollection.csv");
-		} catch (final FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		System.out.println("Recognized " + matchCounter + " matches!");
-		System.out.println("Recognized " + greatMatchCounter + " great matches!");
-
 		brT.close();
 		brD.close();
+	}
+
+	@Override
+	public CompareResult call() throws Exception {
+		try {
+			this.comparePeptides();
+		} catch (IOException | InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+		return result;
 	}
 
 }
