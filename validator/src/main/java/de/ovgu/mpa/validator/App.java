@@ -26,9 +26,17 @@ public class App {
 		fasta.setRequired(false);
 		options.addOption(fasta);
 
-		Option compare = new Option("c", "compare_dbs", true, "paths to db1 abd db2");
+		Option compare = new Option("c", "compare_dbs", false, "paths to db1 abd db2");
 		compare.setRequired(false);
 		options.addOption(compare);
+
+		Option db1 = new Option("db1", "database1", true, "path to db1 / target");
+		db1.setRequired(false);
+		options.addOption(db1);
+
+		Option db2 = new Option("db2", "database2", true, "path to db2 / decoy");
+		db2.setRequired(false);
+		options.addOption(db2);
 
 		Option excludeX = new Option("ex", "exclude_x", false,
 				"exclude peptides with unkown amino acids; requires read_fasta");
@@ -93,13 +101,13 @@ public class App {
 
 			processFasta(targetFolder.toString(), decoyFolder.toString(), cmd.getOptionValue("read_fasta"),
 					batchDir.toString(), fastaFolder);
-		} else if (cmd.hasOption("compare_dbs")) {
+		} else if (cmd.hasOption("compare_dbs") && cmd.hasOption("db1") && cmd.hasOption("db2")) {
 			File resultsFolder = new File("results");
 			if (!resultsFolder.exists())
 				resultsFolder.mkdir();
-
-			String targetFolder = cmd.getOptionValue("compare_dbs").split(" ")[0];
-			String decoyFolder = cmd.getOptionValue("compare_dbs").split(" ")[1];
+			
+			String targetFolder = cmd.getOptionValue("db1");
+			String decoyFolder = cmd.getOptionValue("db2");
 			compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString(), numThreads);
 
 		} else {
