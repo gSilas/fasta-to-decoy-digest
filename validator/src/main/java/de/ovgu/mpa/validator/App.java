@@ -6,6 +6,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,7 +41,7 @@ public class App {
 
 		Option excludeX = new Option("ex", "exclude_x", false,
 				"exclude peptides with unkown amino acids; requires read_fasta");
-				excludeX.setRequired(false);
+		excludeX.setRequired(false);
 		options.addOption(excludeX);
 
 		Option timer = new Option("t", "timer", false, "time execution");
@@ -89,15 +90,33 @@ public class App {
 			if (!fastaFolder.exists())
 				fastaFolder.mkdir();
 
+			Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+
 			// Create Target and Decoy Folder
 			String fileName = cmd.getOptionValue("read_fasta")
 					.split("/")[cmd.getOptionValue("read_fasta").split("/").length - 1].split("\\.")[0];
-			File targetFolder = new File(fastaFolder.getPath() + "/" + fileName);
+			File targetFolder = Paths.get(fastaFolder.getPath(), fileName + "_" + timestamp.toInstant().toString())
+					.toFile();
 			if (!targetFolder.exists())
 				targetFolder.mkdir();
-			File decoyFolder = new File(fastaFolder.getPath() + "/" + fileName + "_decoy");
+
+			File decoyFolder = Paths.get(fastaFolder.getPath(), fileName + "_decoy_" + timestamp.toInstant().toString())
+					.toFile();
 			if (!decoyFolder.exists())
 				decoyFolder.mkdir();
+
+			try {
+				Path tlink = Paths.get(".", "fasta", "last_target");
+				tlink.toFile().delete();
+
+				Path dlink = Paths.get(".", "fasta", "last_decoy");
+				dlink.toFile().delete();
+
+				Files.createSymbolicLink(tlink.toAbsolutePath(), targetFolder.toPath().toAbsolutePath());
+				Files.createSymbolicLink(dlink.toAbsolutePath(), decoyFolder.toPath().toAbsolutePath());
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 
 			processFasta(targetFolder.toString(), decoyFolder.toString(), cmd.getOptionValue("read_fasta"),
 					batchDir.toString(), fastaFolder);
@@ -105,7 +124,7 @@ public class App {
 			File resultsFolder = new File("results");
 			if (!resultsFolder.exists())
 				resultsFolder.mkdir();
-			
+
 			String targetFolder = cmd.getOptionValue("db1");
 			String decoyFolder = cmd.getOptionValue("db2");
 			compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString(), numThreads);
@@ -125,7 +144,7 @@ public class App {
 			File fastaFolder) {
 		// Copy Fasta
 		Path source = Paths.get(fastaPath);
-		Path target = Paths.get(targetFolder + "/" + fastaPath.split("/")[fastaPath.split("/").length - 1]);
+		Path target = Paths.get(targetFolder, fastaPath.split("/")[fastaPath.split("/").length - 1]);
 		try {
 			Files.copy(source, target, REPLACE_EXISTING);
 		} catch (IOException e2) {
@@ -141,7 +160,7 @@ public class App {
 
 		// create decoy
 		DecoyGenerator.generateReverseDecoyDatabase(target,
-				Paths.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]));
+				Paths.get(decoyFolder, "decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]));
 
 		writer = new PeptideWriter();
 		File batchDir = new File("tmp_batches");
@@ -149,8 +168,8 @@ public class App {
 			batchDir.mkdir();
 
 		try {
-			writer.createFiles(decoyFolder, batchFolder, Paths
-					.get(decoyFolder + "/decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]).toFile());
+			writer.createFiles(decoyFolder, batchFolder,
+					Paths.get(decoyFolder, "decoy_" + fastaPath.split("/")[fastaPath.split("/").length - 1]).toFile());
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -161,9 +180,9 @@ public class App {
 		System.out.println("compare");
 		// prepare database splits and thread pool
 		ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
-		String threadFolder = resultsFolder + "/threads/";
-		if (!(new File(threadFolder)).exists())
-			(new File(threadFolder)).mkdir();
+		Path threadFolder = Paths.get(".", "threads");
+		if (!(threadFolder.toFile()).exists())
+			threadFolder.toFile().mkdir();
 
 		HashSet<String> threadNames = new HashSet<String>();
 		HashMap<String, String> targetFolders = new HashMap<>();
@@ -171,8 +190,7 @@ public class App {
 		// count entries, TODO: replace with readout of peptide count from stats
 		long targetCount = 0;
 		try {
-			BufferedReader brCounting = new BufferedReader(
-					new FileReader(new File(targetFolder)));
+			BufferedReader brCounting = new BufferedReader(new FileReader(new File(targetFolder)));
 			String line = brCounting.readLine();
 			while (line != null) {
 				targetCount++;
@@ -187,8 +205,7 @@ public class App {
 		try {
 			long pepsPerThread = targetCount / numThreads;
 			System.out.println(pepsPerThread);
-			BufferedReader brDividing = new BufferedReader(
-					new FileReader(new File(targetFolder)));
+			BufferedReader brDividing = new BufferedReader(new FileReader(new File(targetFolder)));
 			for (int i = 0; i < numThreads; i++) {
 				String threadName = "Thread_" + i;
 				threadNames.add(threadName);
@@ -251,16 +268,16 @@ public class App {
 					lengthTargetArray[i] += result.lengthTargetArray[i];
 					lengthDecoyArray[i] += result.lengthDecoyArray[i];
 					lengthMatchArray[i] += result.lengthMatchArray[i];
-	
-					for (int j = 0; j < 11; j++){
+
+					for (int j = 0; j < 11; j++) {
 						lengthBinMatrix[i][j] += result.lengthBinMatrix[i][j];
 					}
 				}
-	
-				for (int j = 0; j < 11; j++){
+
+				for (int j = 0; j < 11; j++) {
 					cosineSimilarityBins[j] += result.cosineSimilarityBins[j];
 				}
-	
+
 				matchCounter += result.matchCounter;
 				greatMatchCounter += result.greatMatchCounter;
 
@@ -269,6 +286,9 @@ public class App {
 				e.printStackTrace();
 			}
 		}
+
+		if (threadFolder.toFile().exists())
+			deleteDir(threadFolder.toFile());
 
 		System.out.println("Recognized " + matchCounter + " matches!");
 		System.out.println("Recognized " + greatMatchCounter + " great matches!");
@@ -294,7 +314,7 @@ public class App {
 		cosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
 		for (int i = 0; i < cosineSimilarityBins.length; i++) {
 			cosineSimilarityBinsLines
-			.add(new String[] { Double.toString((double) i / 10.0), Long.toString(cosineSimilarityBins[i]) });
+					.add(new String[] { Double.toString((double) i / 10.0), Long.toString(cosineSimilarityBins[i]) });
 		}
 
 		// combine results
@@ -308,5 +328,15 @@ public class App {
 			e.printStackTrace();
 		}
 		// TODO
+	}
+
+	static void deleteDir(File file) {
+		File[] contents = file.listFiles();
+		if (contents != null) {
+			for (File f : contents) {
+				deleteDir(f);
+			}
+		}
+		file.delete();
 	}
 }
