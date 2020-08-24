@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class App {
 
@@ -177,7 +178,6 @@ public class App {
 	}
 
 	public static void compareDB(String targetFolder, String decoyFolder, String resultsFolder, int numThreads) {
-		System.out.println("compare");
 		// prepare database splits and thread pool
 		ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
 		Path threadFolder = Paths.get(".", "threads");
@@ -200,11 +200,17 @@ public class App {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		System.out.println(targetCount);
+
+		System.out.println("Target peptides: " + targetCount);
 		// create subfiles based on number of threads
+		// TODO untangle this mess
 		try {
 			long pepsPerThread = targetCount / numThreads;
-			System.out.println(pepsPerThread);
+			long remainderPeptides = targetCount % numThreads;
+
+			System.out.println("Peptides per thread: " + pepsPerThread);
+			System.out.println("Remaining peptides: " + remainderPeptides);
+
 			BufferedReader brDividing = new BufferedReader(new FileReader(new File(targetFolder)));
 			for (int i = 0; i < numThreads; i++) {
 				String threadName = "Thread_" + i;
@@ -218,6 +224,17 @@ public class App {
 					if (count > pepsPerThread || line == null) {
 						if (line != null) {
 							bwSubfile.write(line + "\n");
+						}
+
+						// handle remainder peptides and put into last thread
+						if (i == numThreads - 1) {
+							for (int j = 0; j < remainderPeptides; j++) {
+								line = brDividing.readLine();
+								if (line != null) {
+									bwSubfile.write(line + "\n");
+								}
+								count++;
+							}
 						}
 						break;
 					} else {
@@ -236,10 +253,14 @@ public class App {
 			e.printStackTrace();
 		}
 
+		AtomicLong done = new AtomicLong();
+		ProgressTask progressTask = new ProgressTask(done, targetCount);
+		threadPool.submit(progressTask);
+
 		LinkedList<Future<CompareResult>> resultList = new LinkedList<Future<CompareResult>>();
 
 		for (String thread : threadNames) {
-			CompareTask task = new CompareTask(decoyFolder, targetFolders.get(thread));
+			CompareTask task = new CompareTask(decoyFolder, targetFolders.get(thread), done);
 			resultList.add(threadPool.submit(task));
 		}
 		threadPool.shutdown();
@@ -287,9 +308,17 @@ public class App {
 			}
 		}
 
+		try {
+			Thread.sleep(600);
+		} catch (InterruptedException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+
 		if (threadFolder.toFile().exists())
 			deleteDir(threadFolder.toFile());
 
+		System.out.println();
 		System.out.println("Recognized " + matchCounter + " matches!");
 		System.out.println("Recognized " + greatMatchCounter + " great matches!");
 

@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class CompareTask implements Callable<CompareResult> {
 
@@ -20,8 +21,9 @@ public class CompareTask implements Callable<CompareResult> {
 	final String decoyPeptides; 
 	final String targetPeptides; 
 	CompareResult result;
+	AtomicLong done;
 
-	public CompareTask(String decoyPeptides, String targetPeptides) {
+	public CompareTask(String decoyPeptides, String targetPeptides, AtomicLong done) {
 		this.decoyPeptides = decoyPeptides;
 		this.targetPeptides = targetPeptides;
 		this.pool = Executors.newCachedThreadPool();
@@ -30,6 +32,7 @@ public class CompareTask implements Callable<CompareResult> {
 			sqrtLookup[i] = Math.sqrt(i);
 		}
 		this.result = new CompareResult();
+		this.done = done;
 	}
 
 	public Double matchIons(Future<double[]> decoyIonsFuture, Future<double[]> targetIonsFuture, double tolerance)
@@ -90,11 +93,13 @@ public class CompareTask implements Callable<CompareResult> {
 		final BufferedReader brT = new BufferedReader(new FileReader(new File(targetPeptides)));
 		final double tolerance = 0.1;
 		final double greatMatchTolerance = 0.5;
-
+		
 		String targetLine = brT.readLine();
 		String[] targetSplit = targetLine.split(";");
 		String targetSequence = targetSplit[0];
 		Double targetMass = Double.valueOf(targetSplit[1]);
+
+		this.done.incrementAndGet();
 
 		result.lengthTargetArray[targetSequence.length()]++;
 
@@ -166,6 +171,8 @@ public class CompareTask implements Callable<CompareResult> {
 				if (targetLine == null)
 					break;
 
+				this.done.incrementAndGet();
+				
 				targetSplit = targetLine.split(";");
 				targetSequence = targetSplit[0];
 				targetMass = Double.valueOf(targetSplit[1]);
@@ -213,6 +220,8 @@ public class CompareTask implements Callable<CompareResult> {
 				if (targetLine == null)
 					break;
 
+				this.done.incrementAndGet();
+
 				targetSplit = targetLine.split(";");
 				targetSequence = targetSplit[0];
 				targetMass = Double.valueOf(targetSplit[1]);
@@ -236,8 +245,6 @@ public class CompareTask implements Callable<CompareResult> {
 				}
 			}
 		}
-
-		System.out.println("Finished reading target & decoy lists");
 
 		pool.shutdown();
 
