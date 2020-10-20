@@ -122,9 +122,14 @@ public class App {
 			processFasta(targetFolder.toString(), decoyFolder.toString(), cmd.getOptionValue("read_fasta"),
 					batchDir.toString(), fastaFolder);
 		} else if (cmd.hasOption("compare_dbs") && cmd.hasOption("db1") && cmd.hasOption("db2")) {
-			File resultsFolder = new File("results");
+			Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+
+			File resultsFolder = Paths.get(".", "results", timestamp.toInstant().toString()).toFile();
+
 			if (!resultsFolder.exists())
-				resultsFolder.mkdir();
+				resultsFolder.mkdirs();
+
+			assert (resultsFolder.canWrite());
 
 			String targetFolder = cmd.getOptionValue("db1");
 			String decoyFolder = cmd.getOptionValue("db2");
@@ -203,7 +208,6 @@ public class App {
 
 		System.out.println("Target peptides: " + targetCount);
 		// create subfiles based on number of threads
-		// TODO untangle this mess
 		try {
 			long pepsPerThread = targetCount / numThreads;
 			long remainderPeptides = targetCount % numThreads;
@@ -212,43 +216,38 @@ public class App {
 			System.out.println("Remaining peptides: " + remainderPeptides);
 
 			BufferedReader brDividing = new BufferedReader(new FileReader(new File(targetFolder)));
+
+			long remainderCount = 0;
+			long peptideSum = 0;
 			for (int i = 0; i < numThreads; i++) {
 				String threadName = "Thread_" + i;
 				threadNames.add(threadName);
 				BufferedWriter bwSubfile = new BufferedWriter(
 						new FileWriter(new File(threadFolder + "/Target_" + threadName)));
-				String line = brDividing.readLine();
 				long count = 0;
-				while (true) {
-					// if also handles last entry
-					if (count > pepsPerThread || line == null) {
-						if (line != null) {
-							bwSubfile.write(line + "\n");
-						}
-
-						// handle remainder peptides and put into last thread
-						if (i == numThreads - 1) {
-							for (int j = 0; j < remainderPeptides; j++) {
-								line = brDividing.readLine();
-								if (line != null) {
-									bwSubfile.write(line + "\n");
-								}
-								count++;
-							}
-						}
-						break;
-					} else {
-						bwSubfile.write(line + "\n");
-						line = brDividing.readLine();
-						count++;
-					}
+				// give each thread its peptides
+				while (count < pepsPerThread) {
+					bwSubfile.write(brDividing.readLine() + "\n");
+					count++;
+				}
+				peptideSum += count;
+				// give each thread a remainder until all remainders are taken
+				if (remainderCount < remainderPeptides) {
+					bwSubfile.write(brDividing.readLine() + "\n");
+					remainderCount++;
 				}
 				bwSubfile.close();
+
 				targetFolders.put(threadName, threadFolder + "/Target_" + threadName);
 				if (!(new File(threadFolder + "/" + threadName)).exists())
 					(new File(threadFolder + "/" + threadName)).mkdir();
 			}
 			brDividing.close();
+
+			// final assertions
+			assert (remainderCount == remainderPeptides);
+			assert ((peptideSum + remainderCount) == targetCount);
+
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -280,6 +279,11 @@ public class App {
 		long matchCounter = 0;
 		long greatMatchCounter = 0;
 
+		long[][] lengthBestBinMatrix = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH][11];
+		long[] bestCosineSimilarityBins = new long[11];
+
+		long[] fragmentMatchArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
+
 		for (Future<CompareResult> resultFuture : resultList) {
 			CompareResult result;
 			try {
@@ -292,11 +296,18 @@ public class App {
 
 					for (int j = 0; j < 11; j++) {
 						lengthBinMatrix[i][j] += result.lengthBinMatrix[i][j];
+						lengthBestBinMatrix[i][j] += result.lengthBestBinMatrix[i][j];
 					}
+
+				}
+
+				for (int i = 0; i < result.fragmentMatch.length; i++) {
+					fragmentMatchArray[i] += result.fragmentMatch[i];
 				}
 
 				for (int j = 0; j < 11; j++) {
 					cosineSimilarityBins[j] += result.cosineSimilarityBins[j];
+					bestCosineSimilarityBins[j] += result.bestCosineSimilarityBins[j];
 				}
 
 				matchCounter += result.matchCounter;
@@ -324,19 +335,27 @@ public class App {
 
 		final List<String[]> lengthMatchLines = new ArrayList<>();
 		final List<String[]> lengthCollectionLines = new ArrayList<>();
+		final List<String[]> lengthBestBinsLines = new ArrayList<>();
 
 		lengthMatchLines.add(new String[] { "length", "matches" });
 		lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins" });
+		lengthBestBinsLines.add(new String[] {"length", "bins"});
 
 		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
 			lengthMatchLines.add(new String[] { Integer.toString(i), Long.toString(lengthMatchArray[i]) });
 
-			String bString = "";
-			for (int j = 0; j < 10; j++) {
+			String bString = "" + lengthBinMatrix[i][0];
+			for (int j = 1; j < 10; j++) {
 				bString += "," + lengthBinMatrix[i][j];
+			}
+
+			String bestLengthString = "" + lengthBestBinMatrix[i][0];
+			for (int j = 1; j < 10; j++) {
+				bestLengthString += "," + lengthBestBinMatrix[i][j];
 			}
 			lengthCollectionLines.add(new String[] { Integer.toString(i), Long.toString(lengthTargetArray[i]),
 					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString });
+			lengthBestBinsLines.add(new String[] {Integer.toString(i), bestLengthString});
 		}
 
 		final List<String[]> cosineSimilarityBinsLines = new ArrayList<>();
@@ -346,12 +365,29 @@ public class App {
 					.add(new String[] { Double.toString((double) i / 10.0), Long.toString(cosineSimilarityBins[i]) });
 		}
 
+		final List<String[]> bestCosineSimilarityBinsLines = new ArrayList<>();
+		bestCosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
+		for (int i = 0; i < bestCosineSimilarityBins.length; i++) {
+			bestCosineSimilarityBinsLines
+					.add(new String[] { Double.toString((double) i / 10.0), Long.toString(bestCosineSimilarityBins[i]) });
+		}
+
+		final List<String[]> fragmentMatchLines = new ArrayList<>();
+		fragmentMatchLines.add(new String[] { "fragmentmatches", "occurences" });
+		for (int i = 0; i < fragmentMatchArray.length; i++) {
+			fragmentMatchLines
+					.add(new String[] { Integer.toString(i), Long.toString(fragmentMatchArray[i]) });
+		}
+
 		// combine results
 		final CSVWriter writer = new CSVWriter();
 		try {
 			writer.createCSV(lengthMatchLines, resultsFolder + "/" + "lengthMatch.csv");
 			writer.createCSV(cosineSimilarityBinsLines, resultsFolder + "/" + "cosineSimilarityBins.csv");
 			writer.createCSV(lengthCollectionLines, resultsFolder + "/" + "lengthCollection.csv");
+			writer.createCSV(bestCosineSimilarityBinsLines, resultsFolder + "/" + "bestcosineSimilarityBins.csv");
+			writer.createCSV(lengthBestBinsLines, resultsFolder + "/" + "lengthbestcosineSimilarityBins.csv");
+			writer.createCSV(fragmentMatchLines, resultsFolder + "/" + "fragmentmatch.csv");
 		} catch (final FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

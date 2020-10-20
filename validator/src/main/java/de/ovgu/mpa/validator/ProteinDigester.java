@@ -36,7 +36,7 @@ public final class ProteinDigester {
 			for (int mc = 0; mc <= missedCleavage; mc++) {
 				if (currentIndex + mc < peptidesMCZero.size()) {
 					sb.append(peptidesMCZero.get(currentIndex + mc));
-					if (sb.length() <  ValidatorConfig.MAXIMUM_PEP_LENGTH && sb.length() > ValidatorConfig.MINIMUM_PEP_LENGTH) {
+					if (sb.length() < ValidatorConfig.MAXIMUM_PEP_LENGTH && sb.length() > ValidatorConfig.MINIMUM_PEP_LENGTH) {
 						peptides.add(sb.toString());
 					}
 				}

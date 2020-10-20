@@ -14,6 +14,11 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public class PeptideWriter {
@@ -29,19 +34,14 @@ public class PeptideWriter {
 		peptideLengthArray = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH];
 		peptideLengthRedundantArray = new int[ValidatorConfig.MAXIMUM_PEP_LENGTH];
 		proteinLengthMap = new HashMap<Integer, Integer>();
-
-		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
-			peptideLengthArray[i] = 0;
-			peptideLengthRedundantArray[i] = 0;
-		}
 	}
 
-	public int readFasta(int batchSize, String batchFiles, File fasta) throws IOException {
+	public long readFasta(int batchSize, String batchFiles, File fasta) throws IOException {
 		double masswater = Constants.MASS_WATER;
 
-		int batchcount = 1;
-		int peptideCount = 0;
-		int proteinCount = 0;
+		long batchcount = 1;
+		long peptideCount = 0;
+		long proteinCount = 0;
 		double peptideMass;
 
 		ArrayList<Peptide> databasePeptideList = new ArrayList<Peptide>();
@@ -160,8 +160,8 @@ public class PeptideWriter {
 		System.out.println("Merging, total peptides processed: " + peptideCount);
 	}
 
-	public int removeDuplicates(int batchSize, String redundantPepDB, String nonRedundantPepDB) throws IOException {
-		int nonRedundantPeptideCount = 0;
+	public long removeDuplicates(int batchSize, String redundantPepDB, String nonRedundantPepDB) throws IOException {
+		long nonRedundantPeptideCount = 0;
 		this.aaLines.clear();
 		System.out.println("Creating non redundant petpide database");
 		BufferedReader brR = new BufferedReader(new FileReader(new File(redundantPepDB)));
@@ -193,6 +193,10 @@ public class PeptideWriter {
 							int oldVal = aaMap.get(c);
 							aaMap.put(c, oldVal + 1);
 						}
+					}
+
+					if (sequence.length() >= ValidatorConfig.MAXIMUM_PEP_LENGTH) {
+						System.out.println(sequence);
 					}
 
 					this.peptideLengthArray[sequence.length()]++;
@@ -237,12 +241,52 @@ public class PeptideWriter {
 		String redundantPepDB = folder + "/Redundant.pep";
 		String nonRedundantPepDB = folder + "/NonRedundant.pep";
 
-		System.out.println("Creating Petpide Batch files");
+		System.out.println("Creating Peptide Batch files");
+
+		int numberOfThreads = 5;
 		//
 		// STEP ONE
 		//
 		// fastareader --> create peptides batchfiles
-		int proteinCount = readFasta(batchSize, batchFiles, fasta);
+		// long proteinCount = readFasta(batchSize, batchFiles, fasta);
+		long proteinCount = 0;
+		FASTAFileReader fr = new FASTAFileReader(fasta);
+		fr.open();
+		while (fr.hasNext()) {
+			fr.next();
+			proteinCount++;
+		}
+		fr.close();
+
+
+		System.out.println("Number of proteins: " + proteinCount);
+		int proteinFraction = (int) proteinCount / numberOfThreads;
+		System.out.println("Proteins per thread: " + proteinFraction);
+
+		ExecutorService executorService = Executors.newFixedThreadPool(numberOfThreads);
+
+		List<Callable<Long>> taskList = new LinkedList();
+
+		for (int i = 0; i < 5; i++) {
+			taskList.add(new FastaReaderCallable(batchFiles, fasta, i, i * proteinFraction, proteinFraction * (i + 1)));
+		}
+
+		List<Future<Long>> futures;
+		try {
+			futures = executorService.invokeAll(taskList);
+			int i = 0;
+			for (Future<Long> future : futures) {
+				// The result is printed only after all the futures are complete. (i.e. after 5
+				// seconds)
+				System.out.println("Thread " + i + " peptides processed: " + future.get());
+				i++;
+			}
+
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+
+		executorService.shutdown();
 
 		//
 		// STEP TWO
@@ -255,7 +299,7 @@ public class PeptideWriter {
 		// STEP THREE
 		//
 		// create duplicate free file
-		int peptideCount = removeDuplicates(batchSize, redundantPepDB, nonRedundantPepDB);
+		long peptideCount = removeDuplicates(batchSize, redundantPepDB, nonRedundantPepDB);
 
 		File f = new File(redundantPepDB);
 		if (f.delete()) {
@@ -277,8 +321,8 @@ public class PeptideWriter {
 
 		final List<String[]> statLines = new ArrayList<>();
 		statLines.add(new String[] { "prop", "count" });
-		statLines.add(new String[] { "protein count", Integer.toString(proteinCount) });
-		statLines.add(new String[] { "peptide count", Integer.toString(peptideCount) });
+		statLines.add(new String[] { "protein count", Long.toString(proteinCount) });
+		statLines.add(new String[] { "peptide count", Long.toString(peptideCount) });
 
 		final CSVWriter writer = new CSVWriter();
 		try {

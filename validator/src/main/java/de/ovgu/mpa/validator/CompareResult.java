@@ -17,4 +17,9 @@ public class CompareResult {
     long matchCounter;
     long greatMatchCounter;
 
+    long[] bestCosineSimilarityBins = new long[11];
+    long[][] lengthBestBinMatrix = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH][11];
+
+    long[] fragmentMatch = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
+
 }

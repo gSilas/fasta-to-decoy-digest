@@ -14,6 +14,17 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class CompareTask implements Callable<CompareResult> {
 
+	private class MatchResult {
+
+		double cosineSimilarity;
+		int fragmentMatch;
+
+		public MatchResult(double cosineSimilarity, int fragmentMatch){
+			this.cosineSimilarity = cosineSimilarity;
+			this.fragmentMatch = fragmentMatch;
+		}
+	}
+
 	ExecutorService pool;
 
 	double[] sqrtLookup;
@@ -35,7 +46,7 @@ public class CompareTask implements Callable<CompareResult> {
 		this.done = done;
 	}
 
-	public Double matchIons(Future<double[]> decoyIonsFuture, Future<double[]> targetIonsFuture, double tolerance)
+	public MatchResult matchIons(Future<double[]> decoyIonsFuture, Future<double[]> targetIonsFuture, double tolerance)
 			throws InterruptedException, ExecutionException {
 
 		double[] decoyIons = decoyIonsFuture.get();
@@ -82,8 +93,7 @@ public class CompareTask implements Callable<CompareResult> {
 		}
 
 		double cosineSimilarity = fragmentMatch / (sqrtLookup[targetIons.length] * sqrtLookup[decoyIons.length]);
-
-		return cosineSimilarity;
+		return new MatchResult(cosineSimilarity, fragmentMatch);
 	}
 
 	public void comparePeptides()
@@ -115,6 +125,8 @@ public class CompareTask implements Callable<CompareResult> {
 
 		LinkedList<Future<double[]>> asyncDecoyIonsList = new LinkedList<Future<double[]>>();
 		Future<double[]> targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+
+		double bestMatchScore = Double.NEGATIVE_INFINITY;
 
 		while (true) {
 
@@ -152,17 +164,31 @@ public class CompareTask implements Callable<CompareResult> {
 
 				// calculate matches for decoys in window
 				for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
-					double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
+					MatchResult match = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
+					//result.fragmentMatch[resultArr[0]]++;
 					result.matchCounter++;
 
-					if (cosineSimilarity >= greatMatchTolerance) {
+					if (match.cosineSimilarity >= greatMatchTolerance) {
 						result.lengthMatchArray[targetSequence.length()]++;
 						result.greatMatchCounter++;
 					}
 
-					int bin = (int) (cosineSimilarity * 10);
+					if (match.cosineSimilarity > bestMatchScore) {
+						bestMatchScore = match.cosineSimilarity;
+					}
+
+					int bin = (int) (match.cosineSimilarity * 10);
 					result.cosineSimilarityBins[bin]++;
 					result.lengthBinMatrix[targetSequence.length()][bin]++;
+
+					result.fragmentMatch[match.fragmentMatch]++;
+
+				}
+
+				if (bestMatchScore > 0) {
+					int bestBin = (int) (bestMatchScore * 10);
+					result.bestCosineSimilarityBins[bestBin]++;
+					result.lengthBestBinMatrix[targetSequence.length()][bestBin]++;	
 				}
 
 				// get new target
@@ -179,6 +205,8 @@ public class CompareTask implements Callable<CompareResult> {
 				result.lengthTargetArray[targetSequence.length()]++;
 
 				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+
+				bestMatchScore = Double.NEGATIVE_INFINITY;
 
 				// check if decoys in window don't match with target and remove unmatching
 				// decoys
@@ -202,17 +230,31 @@ public class CompareTask implements Callable<CompareResult> {
 			while (!decoyMassWindow.isEmpty()) {
 
 				for (Future<double[]> decoyIonsFuture : asyncDecoyIonsList) {
-					double cosineSimilarity = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
+					MatchResult match = matchIons(decoyIonsFuture, targetIonsFuture, tolerance);
 					result.matchCounter++;
+					//result.fragmentMatch[resultArr[0]]++;
 
-					if (cosineSimilarity >= greatMatchTolerance) {
+					if (match.cosineSimilarity >= greatMatchTolerance) {
 						result.lengthMatchArray[targetSequence.length()]++;
 						result.greatMatchCounter++;
 					}
 
-					int bin = (int) (cosineSimilarity * 10);
+					if (match.cosineSimilarity > bestMatchScore) {
+						bestMatchScore = match.cosineSimilarity;
+					}
+
+					int bin = (int) (match.cosineSimilarity * 10);
 					result.cosineSimilarityBins[bin]++;
 					result.lengthBinMatrix[targetSequence.length()][bin]++;
+
+					result.fragmentMatch[match.fragmentMatch]++;
+
+				}
+
+				if (bestMatchScore > 0) {
+					int bestBin = (int) (bestMatchScore * 10);
+					result.bestCosineSimilarityBins[bestBin]++;
+					result.lengthBestBinMatrix[targetSequence.length()][bestBin]++;	
 				}
 
 				targetLine = brT.readLine();
@@ -228,6 +270,8 @@ public class CompareTask implements Callable<CompareResult> {
 				result.lengthTargetArray[targetSequence.length()]++;
 
 				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+
+				bestMatchScore = Double.NEGATIVE_INFINITY;
 
 				// check if decoys in window don't match with target and remove unmatching
 				// decoys
