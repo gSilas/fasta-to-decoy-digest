@@ -96,12 +96,12 @@ public class App {
 			// Create Target and Decoy Folder
 			String fileName = cmd.getOptionValue("read_fasta")
 					.split("/")[cmd.getOptionValue("read_fasta").split("/").length - 1].split("\\.")[0];
-			File targetFolder = Paths.get(fastaFolder.getPath(), fileName + "_" + timestamp.toInstant().toString())
+			File targetFolder = Paths.get(fastaFolder.getPath(), fileName + "_" + timestamp.toInstant().toString().replace(":", ""))
 					.toFile();
 			if (!targetFolder.exists())
 				targetFolder.mkdir();
 
-			File decoyFolder = Paths.get(fastaFolder.getPath(), fileName + "_decoy_" + timestamp.toInstant().toString())
+			File decoyFolder = Paths.get(fastaFolder.getPath(), fileName + "_decoy_" + timestamp.toInstant().toString().replace(":", ""))
 					.toFile();
 			if (!decoyFolder.exists())
 				decoyFolder.mkdir();
