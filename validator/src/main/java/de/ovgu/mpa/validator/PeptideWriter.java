@@ -194,7 +194,6 @@ public class PeptideWriter {
 							aaMap.put(c, oldVal + 1);
 						}
 					}
-
 					if (sequence.length() >= ValidatorConfig.MAXIMUM_PEP_LENGTH) {
 						System.out.println(sequence);
 					}
@@ -265,7 +264,7 @@ public class PeptideWriter {
 
 		ExecutorService executorService = Executors.newFixedThreadPool(numberOfThreads);
 
-		List<Callable<Long>> taskList = new LinkedList();
+		List<Callable<Long>> taskList = new LinkedList<Callable<Long>>();
 
 		for (int i = 0; i < 5; i++) {
 			taskList.add(new FastaReaderCallable(batchFiles, fasta, i, i * proteinFraction, proteinFraction * (i + 1)));

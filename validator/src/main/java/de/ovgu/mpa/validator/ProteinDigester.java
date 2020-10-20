@@ -4,15 +4,15 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 
 public final class ProteinDigester {
-    private static StringBuilder sb = new StringBuilder();
-
+	
     public static LinkedList<String> digestProtein(String proteinSequence) {
-
+    	StringBuilder sb = new StringBuilder();
 		if(proteinSequence.contains("X") && ValidatorConfig.excludeX) {
 			return new LinkedList<>();
 		}
 
         LinkedList<String> peptides = new LinkedList<>();
+        // STEP 1 : digest peptides MC = 0
 		// simple digest, no missed cleavages, no length filtering
 		ArrayList<String> peptidesMCZero = new ArrayList<String>(); 
 		sb.setLength(0);
@@ -28,6 +28,7 @@ public final class ProteinDigester {
 		if (sb.length() != 0) {
 			peptidesMCZero.add(sb.toString());	
 		}
+		// STEP 2 : concatenate peptides to simulate Missed Cleavages
 		// number of peptides minus 1 == max missed cleavages
 		int missedCleavage =  peptidesMCZero.size() - 1;
 		// consider missed cleavage (all of them)
