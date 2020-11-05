@@ -22,4 +22,6 @@ public class CompareResult {
 
     long[] fragmentMatch = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
 
+    long[] lengthDuplicateArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+
 }

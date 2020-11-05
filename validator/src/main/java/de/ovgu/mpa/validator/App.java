@@ -28,6 +28,10 @@ public class App {
 		fasta.setRequired(false);
 		options.addOption(fasta);
 
+		Option mascot = new Option("f", "read_mascot", true, "mascot csv file path");
+		mascot.setRequired(false);
+		options.addOption(mascot);
+
 		Option compare = new Option("c", "compare_dbs", false, "paths to db1 abd db2");
 		compare.setRequired(false);
 		options.addOption(compare);
@@ -96,13 +100,14 @@ public class App {
 			// Create Target and Decoy Folder
 			String fileName = cmd.getOptionValue("read_fasta")
 					.split("/")[cmd.getOptionValue("read_fasta").split("/").length - 1].split("\\.")[0];
-			File targetFolder = Paths.get(fastaFolder.getPath(), fileName + "_" + timestamp.toInstant().toString().replace(":", ""))
+			File targetFolder = Paths
+					.get(fastaFolder.getPath(), fileName + "_" + timestamp.toInstant().toString().replace(":", ""))
 					.toFile();
 			if (!targetFolder.exists())
 				targetFolder.mkdir();
 
-			File decoyFolder = Paths.get(fastaFolder.getPath(), fileName + "_decoy_" + timestamp.toInstant().toString().replace(":", ""))
-					.toFile();
+			File decoyFolder = Paths.get(fastaFolder.getPath(),
+					fileName + "_decoy_" + timestamp.toInstant().toString().replace(":", "")).toFile();
 			if (!decoyFolder.exists())
 				decoyFolder.mkdir();
 
@@ -134,6 +139,39 @@ public class App {
 			String targetFolder = cmd.getOptionValue("db1");
 			String decoyFolder = cmd.getOptionValue("db2");
 			compareDB(targetFolder.toString(), decoyFolder.toString(), resultsFolder.toString(), numThreads);
+
+		} else if (cmd.hasOption("read_mascot")) {
+
+			String fileName = cmd.getOptionValue("read_mascot");
+			File csv = new File(fileName);
+			MascotCSVReader reader = new MascotCSVReader(csv);
+			try {
+
+				AtomicLong done = new AtomicLong();
+				ExecutorService threadPool = Executors.newFixedThreadPool(1);
+
+				System.out.println(reader.getPeptides("test.pep"));
+
+				MascotCompareCallable task = new MascotCompareCallable("test.pep", done);
+				Future<MascotCompareResult> future = threadPool.submit(task);
+				threadPool.shutdown();
+
+				MascotCompareResult res = future.get();
+
+				for (String key : res.lenghtMatchMap.keySet()) {
+					System.out.println(key + " " + res.lenghtMatchMap.get(key) + " " + res.lenghtScoreMap.get(key));
+				}
+
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 
 		} else {
 			formatter.printHelp("Fasta DB Compare", options);
@@ -259,7 +297,7 @@ public class App {
 		LinkedList<Future<CompareResult>> resultList = new LinkedList<Future<CompareResult>>();
 
 		for (String thread : threadNames) {
-			CompareTask task = new CompareTask(decoyFolder, targetFolders.get(thread), done);
+			CompareCallable task = new CompareCallable(decoyFolder, targetFolders.get(thread), done);
 			resultList.add(threadPool.submit(task));
 		}
 		threadPool.shutdown();
@@ -284,6 +322,8 @@ public class App {
 
 		long[] fragmentMatchArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH * 4];
 
+		long[] lengthDuplicateArray = new long[ValidatorConfig.MAXIMUM_PEP_LENGTH];
+
 		for (Future<CompareResult> resultFuture : resultList) {
 			CompareResult result;
 			try {
@@ -291,14 +331,14 @@ public class App {
 
 				for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
 					lengthTargetArray[i] += result.lengthTargetArray[i];
-					lengthDecoyArray[i] += result.lengthDecoyArray[i];
+					lengthDecoyArray[i] = result.lengthDecoyArray[i];
 					lengthMatchArray[i] += result.lengthMatchArray[i];
 
 					for (int j = 0; j < 11; j++) {
 						lengthBinMatrix[i][j] += result.lengthBinMatrix[i][j];
 						lengthBestBinMatrix[i][j] += result.lengthBestBinMatrix[i][j];
 					}
-
+					lengthDuplicateArray[i] += result.lengthDuplicateArray[i];
 				}
 
 				for (int i = 0; i < result.fragmentMatch.length; i++) {
@@ -312,6 +352,7 @@ public class App {
 
 				matchCounter += result.matchCounter;
 				greatMatchCounter += result.greatMatchCounter;
+
 
 			} catch (InterruptedException | ExecutionException e) {
 				// TODO Auto-generated catch block
@@ -336,25 +377,36 @@ public class App {
 		final List<String[]> lengthMatchLines = new ArrayList<>();
 		final List<String[]> lengthCollectionLines = new ArrayList<>();
 		final List<String[]> lengthBestBinsLines = new ArrayList<>();
+		final List<String[]> lengthBins = new ArrayList<>();
 
 		lengthMatchLines.add(new String[] { "length", "matches" });
-		lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins" });
+		lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins", "duplicates" });
 		lengthBestBinsLines.add(new String[] {"length", "bins"});
+		lengthBins.add(new String[] {"length", "0-0.1", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5", "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1"});
 
 		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
 			lengthMatchLines.add(new String[] { Integer.toString(i), Long.toString(lengthMatchArray[i]) });
+
+			String[] newLine = new String[11];
+			newLine[0] = Integer.toString(i);
 
 			String bString = "" + lengthBinMatrix[i][0];
 			for (int j = 1; j < 10; j++) {
 				bString += "," + lengthBinMatrix[i][j];
 			}
 
+			for (int j = 1; j < 11; j++) {
+				newLine[j] = Long.toString(lengthBinMatrix[i][j]);
+			}
+
+			lengthBins.add(newLine);
+
 			String bestLengthString = "" + lengthBestBinMatrix[i][0];
 			for (int j = 1; j < 10; j++) {
 				bestLengthString += "," + lengthBestBinMatrix[i][j];
 			}
 			lengthCollectionLines.add(new String[] { Integer.toString(i), Long.toString(lengthTargetArray[i]),
-					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString });
+					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString, Long.toString(lengthDuplicateArray[i]) });
 			lengthBestBinsLines.add(new String[] {Integer.toString(i), bestLengthString});
 		}
 
@@ -388,6 +440,7 @@ public class App {
 			writer.createCSV(bestCosineSimilarityBinsLines, resultsFolder + "/" + "bestcosineSimilarityBins.csv");
 			writer.createCSV(lengthBestBinsLines, resultsFolder + "/" + "lengthbestcosineSimilarityBins.csv");
 			writer.createCSV(fragmentMatchLines, resultsFolder + "/" + "fragmentmatch.csv");
+			writer.createCSV(lengthBins, resultsFolder + "/" + "lengthbins.csv");
 		} catch (final FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

@@ -26,6 +26,9 @@ public class FastaReaderCallable implements Callable<Long> {
 
     @Override
     public Long call() throws Exception {
+
+        System.out.println("Starting Thread " + this.threadNumber);
+
         double masswater = Constants.MASS_WATER;
         
         long proteinCount = 0;
@@ -55,6 +58,10 @@ public class FastaReaderCallable implements Callable<Long> {
                 
                 peptideMass -= masswater * (peptideString.length() - 1);
                 databasePeptideList.add(new Peptide(peptideString, peptideMass));
+            }
+
+            if ((proteinCount-startProtein) % 1000 == 0) {
+                System.out.println("Thread " + this.threadNumber + " proteins processed: " + (proteinCount-startProtein));
             }
 
             fastaProtein = fr.next();
