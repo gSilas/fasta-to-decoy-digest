@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.concurrent.Callable;
 
+import de.ovgu.mpa.validator.fasta.FASTAFileReader;
+
 public class FastaReaderCallable implements Callable<Long> {
 
     String batchFiles;

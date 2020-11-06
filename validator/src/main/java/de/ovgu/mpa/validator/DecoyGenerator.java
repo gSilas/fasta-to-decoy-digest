@@ -5,6 +5,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
 
+import de.ovgu.mpa.validator.fasta.FASTAFileReader;
+
 public class DecoyGenerator {
 
     public static void generateReverseDecoyDatabase(Path fastaPath, Path decoyPath) {
@@ -14,7 +16,7 @@ public class DecoyGenerator {
             fr.open();
             BufferedWriter bw = new BufferedWriter(new FileWriter(decoyPath.toFile()));
             while (fr.hasNext()) {
-                FastaProtein fastaProtein = fr.next();
+                de.ovgu.mpa.validator.fasta.FastaProtein fastaProtein = fr.next();
                 DecoyProtein prot = new DecoyProtein(fastaProtein);
                 bw.write(">" + prot.getDescription() + "\n");
                 bw.write(prot.getSequence() + "\n");

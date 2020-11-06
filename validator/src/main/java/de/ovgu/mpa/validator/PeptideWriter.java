@@ -21,6 +21,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
+import de.ovgu.mpa.validator.fasta.FASTAFileReader;
+
 public class PeptideWriter {
 
 	List<String[]> aaLines;

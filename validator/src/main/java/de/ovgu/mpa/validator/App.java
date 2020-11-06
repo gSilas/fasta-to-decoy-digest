@@ -2,6 +2,13 @@ package de.ovgu.mpa.validator;
 
 import static java.nio.file.StandardCopyOption.*;
 import org.apache.commons.cli.*;
+
+import de.ovgu.mpa.validator.fasta.CompareCallable;
+import de.ovgu.mpa.validator.fasta.CompareResult;
+import de.ovgu.mpa.validator.mascot.MascotCSVReader;
+import de.ovgu.mpa.validator.mascot.MascotCompareCallable;
+import de.ovgu.mpa.validator.mascot.MascotCompareResult;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,9 +35,13 @@ public class App {
 		fasta.setRequired(false);
 		options.addOption(fasta);
 
-		Option mascot = new Option("f", "read_mascot", true, "mascot csv file path");
+		Option mascot = new Option("m", "read_mascot", true, "mascot csv file path");
 		mascot.setRequired(false);
 		options.addOption(mascot);
+
+		Option match = new Option("a", "match_mascot", true, "pep file path");
+		match.setRequired(false);
+		options.addOption(match);
 
 		Option compare = new Option("c", "compare_dbs", false, "paths to db1 abd db2");
 		compare.setRequired(false);
@@ -146,25 +157,28 @@ public class App {
 			File csv = new File(fileName);
 			MascotCSVReader reader = new MascotCSVReader(csv);
 			try {
+				System.out.println(reader.getPeptides("test.pep"));
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		} else if (cmd.hasOption("match_mascot")) {
+
+			String fileName = cmd.getOptionValue("match_mascot");
+			try {
 
 				AtomicLong done = new AtomicLong();
 				ExecutorService threadPool = Executors.newFixedThreadPool(1);
-
-				System.out.println(reader.getPeptides("test.pep"));
-
-				MascotCompareCallable task = new MascotCompareCallable("test.pep", done);
+				MascotCompareCallable task = new MascotCompareCallable(fileName, done);
 				Future<MascotCompareResult> future = threadPool.submit(task);
 				threadPool.shutdown();
 
 				MascotCompareResult res = future.get();
 
-				for (String key : res.lenghtMatchMap.keySet()) {
-					System.out.println(key + " " + res.lenghtMatchMap.get(key) + " " + res.lenghtScoreMap.get(key));
+				for (String key : res.cosineSimilarityMap.keySet()) {
+					System.out.println(key + " " + res.cosineSimilarityMap.get(key) + " " + res.mascotScoreMap.get(key) + " " + res.fragmentMatchMap.get(key));
 				}
 
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();

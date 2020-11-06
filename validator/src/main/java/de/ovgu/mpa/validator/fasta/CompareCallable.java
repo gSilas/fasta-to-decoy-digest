@@ -1,4 +1,4 @@
-package de.ovgu.mpa.validator;
+package de.ovgu.mpa.validator.fasta;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -11,6 +11,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+
+import de.ovgu.mpa.validator.FragmentationCallable;
+import de.ovgu.mpa.validator.ValidatorConfig;
 
 public class CompareCallable implements Callable<CompareResult> {
 

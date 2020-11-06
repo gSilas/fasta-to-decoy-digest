@@ -1,4 +1,4 @@
-package de.ovgu.mpa.validator;
+package de.ovgu.mpa.validator.mascot;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -7,6 +7,10 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+
+import de.ovgu.mpa.validator.AminoAcid;
+import de.ovgu.mpa.validator.Constants;
+import de.ovgu.mpa.validator.ValidatorConfig;
 
 public class MascotCSVReader {
 

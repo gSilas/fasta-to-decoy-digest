@@ -1,18 +1,19 @@
-package de.ovgu.mpa.validator;
+package de.ovgu.mpa.validator.mascot;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+
+import de.ovgu.mpa.validator.FragmentationCallable;
+import de.ovgu.mpa.validator.ValidatorConfig;
 
 public class MascotCompareCallable implements Callable<MascotCompareResult> {
 
@@ -107,8 +108,10 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 			// System.out.println(mascotIonsString);
 			int i = 0;
 			for (String ionPair : mascotIonsString.split(",")) {
-				mascotIons[i] = Double.parseDouble(ionPair.split(":")[0]);
-				i++;
+				if (Double.parseDouble(ionPair.split(":")[1]) > 25.0) {
+					mascotIons[i] = Double.parseDouble(ionPair.split(":")[0]);
+					i++;
+				}
 			}
 			Arrays.sort(mascotIons);
 			return mascotIons;
@@ -120,7 +123,6 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 
 		final BufferedReader brM = new BufferedReader(new FileReader(new File(mascotPeptides)));
 		final double tolerance = 0.1;
-		final double greatMatchTolerance = 0.5;
 		
 		String mascotLine = brM.readLine();
 		String[] mascotSplit = mascotLine.split(";");
@@ -141,8 +143,9 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 
 			MatchResult match = matchIons(mascotIonsSeqFuture, mascotIonsFuture, tolerance);
 
-			result.lenghtMatchMap.put(mascotSequence, match.cosineSimilarity);
-			result.lenghtScoreMap.put(mascotSequence, mascotScore);
+			result.cosineSimilarityMap.put(mascotSequence, match.cosineSimilarity);
+			result.mascotScoreMap.put(mascotSequence, mascotScore);
+			result.fragmentMatchMap.put(mascotSequence, match.fragmentMatch);
 
 			mascotLine = brM.readLine();
 

@@ -1,9 +1,11 @@
-package de.ovgu.mpa.validator;
+package de.ovgu.mpa.validator.fasta;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+
+import de.ovgu.mpa.validator.Protein;
 
 public class FASTAWriter {
 
