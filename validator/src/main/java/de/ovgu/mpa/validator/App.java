@@ -153,11 +153,29 @@ public class App {
 
 		} else if (cmd.hasOption("read_mascot")) {
 
-			String fileName = cmd.getOptionValue("read_mascot");
-			File csv = new File(fileName);
+			File mascotFolder = new File("mascot");
+			if (!mascotFolder.exists())
+				mascotFolder.mkdir();
+
+			String filePath = cmd.getOptionValue("read_mascot");
+			String fileName = filePath.split("/")[filePath.split("/").length - 1].split("\\.")[0];
+
+			File targetFolder = Paths.get(mascotFolder.getPath(), fileName).toFile();
+			if (!targetFolder.exists())
+				targetFolder.mkdir();
+
+			Path source = Paths.get(filePath);
+			Path target = Paths.get(targetFolder.toString(), fileName + ".csv");
+			try {
+				Files.copy(source, target, REPLACE_EXISTING);
+			} catch (IOException e2) {
+				e2.printStackTrace();
+			}
+
+			File csv = new File(filePath);
 			MascotCSVReader reader = new MascotCSVReader(csv);
 			try {
-				System.out.println(reader.getPeptides("test.pep"));
+				System.out.println(reader.getPeptides(targetFolder.toString() +  "/" + fileName + ".pep"));
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -176,7 +194,8 @@ public class App {
 				MascotCompareResult res = future.get();
 
 				for (String key : res.cosineSimilarityMap.keySet()) {
-					System.out.println(key + " " + res.cosineSimilarityMap.get(key) + " " + res.mascotScoreMap.get(key) + " " + res.fragmentMatchMap.get(key));
+					System.out.println(key + " " + res.cosineSimilarityMap.get(key) + " " + res.mascotScoreMap.get(key)
+							+ " " + res.fragmentMatchMap.get(key));
 				}
 
 			} catch (InterruptedException e) {
@@ -367,7 +386,6 @@ public class App {
 				matchCounter += result.matchCounter;
 				greatMatchCounter += result.greatMatchCounter;
 
-
 			} catch (InterruptedException | ExecutionException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -395,8 +413,9 @@ public class App {
 
 		lengthMatchLines.add(new String[] { "length", "matches" });
 		lengthCollectionLines.add(new String[] { "length", "target", "decoy", "matches", "bins", "duplicates" });
-		lengthBestBinsLines.add(new String[] {"length", "bins"});
-		lengthBins.add(new String[] {"length", "0-0.1", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5", "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1"});
+		lengthBestBinsLines.add(new String[] { "length", "bins" });
+		lengthBins.add(new String[] { "length", "0-0.1", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5", "0.5-0.6",
+				"0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1" });
 
 		for (int i = 0; i < ValidatorConfig.MAXIMUM_PEP_LENGTH; i++) {
 			lengthMatchLines.add(new String[] { Integer.toString(i), Long.toString(lengthMatchArray[i]) });
@@ -420,8 +439,9 @@ public class App {
 				bestLengthString += "," + lengthBestBinMatrix[i][j];
 			}
 			lengthCollectionLines.add(new String[] { Integer.toString(i), Long.toString(lengthTargetArray[i]),
-					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString, Long.toString(lengthDuplicateArray[i]) });
-			lengthBestBinsLines.add(new String[] {Integer.toString(i), bestLengthString});
+					Long.toString(lengthDecoyArray[i]), Long.toString(lengthMatchArray[i]), bString,
+					Long.toString(lengthDuplicateArray[i]) });
+			lengthBestBinsLines.add(new String[] { Integer.toString(i), bestLengthString });
 		}
 
 		final List<String[]> cosineSimilarityBinsLines = new ArrayList<>();
@@ -434,15 +454,14 @@ public class App {
 		final List<String[]> bestCosineSimilarityBinsLines = new ArrayList<>();
 		bestCosineSimilarityBinsLines.add(new String[] { "bin", "occurences" });
 		for (int i = 0; i < bestCosineSimilarityBins.length; i++) {
-			bestCosineSimilarityBinsLines
-					.add(new String[] { Double.toString((double) i / 10.0), Long.toString(bestCosineSimilarityBins[i]) });
+			bestCosineSimilarityBinsLines.add(
+					new String[] { Double.toString((double) i / 10.0), Long.toString(bestCosineSimilarityBins[i]) });
 		}
 
 		final List<String[]> fragmentMatchLines = new ArrayList<>();
 		fragmentMatchLines.add(new String[] { "fragmentmatches", "occurences" });
 		for (int i = 0; i < fragmentMatchArray.length; i++) {
-			fragmentMatchLines
-					.add(new String[] { Integer.toString(i), Long.toString(fragmentMatchArray[i]) });
+			fragmentMatchLines.add(new String[] { Integer.toString(i), Long.toString(fragmentMatchArray[i]) });
 		}
 
 		// combine results
