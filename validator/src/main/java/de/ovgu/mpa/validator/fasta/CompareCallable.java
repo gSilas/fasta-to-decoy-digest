@@ -127,7 +127,7 @@ public class CompareCallable implements Callable<CompareResult> {
 		LinkedList<Double> decoyMassWindow = new LinkedList<Double>();
 
 		LinkedList<Future<double[]>> asyncDecoyIonsList = new LinkedList<Future<double[]>>();
-		Future<double[]> targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+		Future<double[]> targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence, true));
 
 		double bestMatchScore = Double.NEGATIVE_INFINITY;
 
@@ -138,7 +138,7 @@ public class CompareCallable implements Callable<CompareResult> {
 
 				decoySequenceWindow.add(decoySequence);
 				decoyMassWindow.add(decoyMass);
-				Future<double[]> decoyIonsFuture = pool.submit(new FragmentationCallable(decoySequence));
+				Future<double[]> decoyIonsFuture = pool.submit(new FragmentationCallable(decoySequence, true));
 				asyncDecoyIonsList.add(decoyIonsFuture);
 
 				decoyLine = brD.readLine();
@@ -211,7 +211,7 @@ public class CompareCallable implements Callable<CompareResult> {
 				targetMass = Double.valueOf(targetSplit[1]);
 				result.lengthTargetArray[targetSequence.length()]++;
 
-				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence, true));
 
 				bestMatchScore = Double.NEGATIVE_INFINITY;
 
@@ -276,7 +276,7 @@ public class CompareCallable implements Callable<CompareResult> {
 				targetMass = Double.valueOf(targetSplit[1]);
 				result.lengthTargetArray[targetSequence.length()]++;
 
-				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence));
+				targetIonsFuture = pool.submit(new FragmentationCallable(targetSequence, true));
 
 				bestMatchScore = Double.NEGATIVE_INFINITY;
 

@@ -4,16 +4,22 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import de.ovgu.mpa.validator.FragmentationCallable;
 import de.ovgu.mpa.validator.ValidatorConfig;
+import de.ovgu.mpa.validator.XTandemMatch;
 
 public class MascotCompareCallable implements Callable<MascotCompareResult> {
 
@@ -22,7 +28,7 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 		double cosineSimilarity;
 		int fragmentMatch;
 
-		public MatchResult(double cosineSimilarity, int fragmentMatch){
+		public MatchResult(double cosineSimilarity, int fragmentMatch) {
 			this.cosineSimilarity = cosineSimilarity;
 			this.fragmentMatch = fragmentMatch;
 		}
@@ -32,7 +38,7 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 
 	double[] sqrtLookup;
 
-	final String mascotPeptides; 
+	final String mascotPeptides;
 	MascotCompareResult result;
 	AtomicLong done;
 
@@ -47,83 +53,73 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 		this.done = done;
 	}
 
-	public MatchResult matchIons(Future<double[]> theoreticalIonsFuture, Future<double[]> experimentalIonsFuture, double tolerance)
-			throws InterruptedException, ExecutionException {
+	public MatchResult matchIons(Future<double[]> theoreticalIonsFuture, Future<double[][]> experimentalIonsFuture,
+			double tolerance) throws InterruptedException, ExecutionException {
 
-		double[] decoyIons = theoreticalIonsFuture.get();
-		double[] targetIons = experimentalIonsFuture.get();
+		double[] theoreticalIons = theoreticalIonsFuture.get();
+		double[] experimentalIons = experimentalIonsFuture.get()[0];
 
-		//System.out.println(Arrays.toString(decoyIons));
-		//System.out.println(Arrays.toString(targetIons));
-
-		int indexDecoy = 0;
-		int indexTarget = 0;
+		int indexTheo = 0;
+		int indexExp = 0;
 		int fragmentMatch = 0;
 
-		double decoyIon = decoyIons[0];
-		double targetIon = targetIons[0];
-
 		while (true) {
-			if (targetIon <= decoyIon + tolerance && targetIon >= decoyIon - tolerance) {
+			if (experimentalIons[indexExp] > theoreticalIons[indexTheo] + tolerance) {
+				indexTheo++;
+			} else if (experimentalIons[indexExp] < theoreticalIons[indexTheo] - tolerance) {
+				indexExp++;
+			} else {
 				fragmentMatch++;
-				indexTarget++;
-				indexDecoy++;
-
-				// System.out.println("Match");
-
-				if (indexDecoy >= decoyIons.length || indexTarget >= targetIons.length) {
-					break;
-				}
-
-				decoyIon = decoyIons[indexDecoy];
-				targetIon = targetIons[indexTarget];
-
-			} else if (targetIon > decoyIon + tolerance) {
-				indexDecoy++;
-
-				if (indexDecoy >= decoyIons.length) {
-					break;
-				}
-
-				decoyIon = decoyIons[indexDecoy];
-			} else if (targetIon < decoyIon - tolerance) {
-				indexTarget++;
-
-				if (indexTarget >= targetIons.length) {
-					break;
-				}
-
-				targetIon = targetIons[indexTarget];
+				indexExp++;
+				indexTheo++;
 			}
 
+			if (indexTheo >= theoreticalIons.length || indexExp >= experimentalIons.length) {
+				break;
+			}
 		}
 
-		double cosineSimilarity = fragmentMatch / (sqrtLookup[decoyIons.length] * sqrtLookup[decoyIons.length]);
+		double cosineSimilarity = fragmentMatch
+				/ (Math.sqrt(experimentalIons.length) * sqrtLookup[theoreticalIons.length]);
 		return new MatchResult(cosineSimilarity, fragmentMatch);
 	}
 
-	public Future<double[]> parseIons(String mascotIonsString) {
+	public Future<double[][]> parseIons(String mascotIonsString) {
 		return pool.submit(() -> {
-			double[] mascotIons = new double[mascotIonsString.split(":").length];
-			// System.out.println(mascotIonsString);
+			double[][] mascotResult = new double[2][mascotIonsString.split(":").length - 1];
+			double[] mascotIons = new double[mascotIonsString.split(":").length - 1];
+			Double[] mascotIntensity = new Double[mascotIonsString.split(":").length - 1];
+
 			int i = 0;
 			for (String ionPair : mascotIonsString.split(",")) {
-				if (Double.parseDouble(ionPair.split(":")[1]) > 25.0) {
-					mascotIons[i] = Double.parseDouble(ionPair.split(":")[0]);
-					i++;
-				}
+				mascotIons[i] = Double.parseDouble(ionPair.split(":")[0]);
+				mascotIntensity[i] = Double.parseDouble(ionPair.split(":")[1]);
+				i++;
 			}
+
+			final List<Double> mascotIntensityCopy = Arrays.asList(mascotIntensity);
+			ArrayList<Double> sortedList = new ArrayList(mascotIntensityCopy);
+			Collections.sort(sortedList, Comparator.comparing(s -> mascotIons[mascotIntensityCopy.indexOf(s)]));
 			Arrays.sort(mascotIons);
-			return mascotIons;
+
+			mascotResult[0] = mascotIons;
+			mascotResult[1] = new double[mascotIonsString.split(":").length - 1];
+
+			int j = 0;
+			for (Double d : sortedList) {
+				mascotResult[1][j] = (double) d;
+				j++;
+			}
+
+			return mascotResult;
 		});
 	}
 
-	public void comparePeptides()
-			throws IOException, InterruptedException, ExecutionException {
+	public void comparePeptides() throws IOException, InterruptedException, ExecutionException {
 
 		final BufferedReader brM = new BufferedReader(new FileReader(new File(mascotPeptides)));
-		final double tolerance = 0.1;
-		
+		final double tolerance = 0.005;
+
 		String mascotLine = brM.readLine();
 		String[] mascotSplit = mascotLine.split(";");
 		String mascotSequence = mascotSplit[0];
@@ -131,21 +127,19 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 		Double mascotScore = Double.valueOf(mascotSplit[3]);
 		String mascotIonsString = mascotSplit[4];
 
-		Future<double[]> mascotIonsFuture = parseIons(mascotIonsString);
-
-		this.done.incrementAndGet();
-
-		Future<double[]> mascotIonsSeqFuture = pool.submit(new FragmentationCallable(mascotSequence));
-
-		// double bestMatchScore = Double.NEGATIVE_INFINITY;
+		Future<double[][]> mascotFuture = parseIons(mascotIonsString);
+		Future<double[]> mascotIonsSeqFuture = pool.submit(new FragmentationCallable(mascotSequence, true));
 
 		while (true) {
 
-			MatchResult match = matchIons(mascotIonsSeqFuture, mascotIonsFuture, tolerance);
+			MatchResult match = matchIons(mascotIonsSeqFuture, mascotFuture, tolerance);
+			XTandemMatch xTandemMatch = new XTandemMatch(mascotSequence, mascotFuture, pool);
+			double xTandemScore = xTandemMatch.calculate();
 
 			result.cosineSimilarityMap.put(mascotSequence, match.cosineSimilarity);
 			result.mascotScoreMap.put(mascotSequence, mascotScore);
 			result.fragmentMatchMap.put(mascotSequence, match.fragmentMatch);
+			result.xTandemMap.put(mascotSequence, xTandemScore);
 
 			mascotLine = brM.readLine();
 
@@ -159,7 +153,8 @@ public class MascotCompareCallable implements Callable<MascotCompareResult> {
 			mascotScore = Double.valueOf(mascotSplit[3]);
 			mascotIonsString = mascotSplit[4];
 
-			mascotIonsFuture = parseIons(mascotIonsString);
+			mascotFuture = parseIons(mascotIonsString);
+			mascotIonsSeqFuture = pool.submit(new FragmentationCallable(mascotSequence, true));
 
 		}
 

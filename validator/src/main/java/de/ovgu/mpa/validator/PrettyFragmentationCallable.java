@@ -1,86 +1,55 @@
 package de.ovgu.mpa.validator;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
-public class FragmentationCallable implements Callable<double[]> {
+public class PrettyFragmentationCallable implements Callable<Map<String, double[]>> {
 
     private final double PROTON = 1.007276;
 
     private String pepSequence;
-    private boolean chargeOneAndTwo;
 
-    public FragmentationCallable(String pepSequence, boolean chargeOneAndTwo) {
+    public PrettyFragmentationCallable(String pepSequence) {
         this.pepSequence = pepSequence;
-        this.chargeOneAndTwo = chargeOneAndTwo;
-    }
-
-    public double[] chargeOne() {
-        double[] fragmentIons = new double[this.pepSequence.length() * 2];
-
-        int a = 0;
-        int lCount = 0;
-
-        // DEAL WITH PROTEIN N-TERMINUS
-        // dValue = 0.0;
-        // deal with non-hydrolytic cleavage
-        double bValue = 0.0;
-        double yValue = 18.010560035000001;
-
-        // MAIN LOOP
-        while (a <= this.pepSequence.length() - 1) {
-            bValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(a));
-            yValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(this.pepSequence.length() - 1 - a));
-            fragmentIons[lCount] = PROTON + bValue;
-            lCount++;
-            fragmentIons[lCount] = PROTON + yValue;
-            lCount++;
-            a++;
-        }
-
-        Arrays.sort(fragmentIons);
-        return fragmentIons;
-    }
-
-    public double[] chargeOneAndTwo() {
-        double[] fragmentIons = new double[this.pepSequence.length() * 4];
-
-        int a = 0;
-        int lCount = 0;
-
-        // DEAL WITH PROTEIN N-TERMINUS
-        // dValue = 0.0;
-        // deal with non-hydrolytic cleavage
-        double bValue = 0.0;
-        double yValue = 18.010560035000001;
-
-        // MAIN LOOP
-        while (a <= this.pepSequence.length() - 1) {
-            bValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(a));
-            yValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(this.pepSequence.length() - 1 - a));
-            fragmentIons[lCount] = PROTON + bValue;
-            lCount++;
-            fragmentIons[lCount] = (PROTON * 2.0 + bValue) / 2.0;
-            lCount++;
-            fragmentIons[lCount] = PROTON + yValue;
-            lCount++;
-            fragmentIons[lCount] = (PROTON * 2.0 + yValue) / 2.0;
-            lCount++;
-
-            a++;
-        }
-
-        Arrays.sort(fragmentIons);
-        return fragmentIons;
     }
 
     @Override
-    public double[] call() throws Exception {
-        if (this.chargeOneAndTwo){
-            return chargeOneAndTwo();
-        } else {
-            return chargeOne();
+    public Map<String, double[]> call() throws Exception {
+        
+        Map<String, double[]> resultMap = new HashMap<String, double[]>();
+
+        double[] bIons = new double[this.pepSequence.length()];
+        double[] bplusplusIons = new double[this.pepSequence.length()];
+        double[] yIons = new double[this.pepSequence.length()];
+        double[] yplusplusIons = new double[this.pepSequence.length()];
+
+        int a = 0;
+
+        // DEAL WITH PROTEIN N-TERMINUS
+        // dValue = 0.0;
+        // deal with non-hydrolytic cleavage
+        double bValue = 0.0;
+        double yValue = 18.010560035000001;
+
+        // MAIN LOOP
+        while (a <= this.pepSequence.length() - 1) {
+            bValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(a));
+            yValue += FragmentationCalculator.getAAMass(this.pepSequence.charAt(this.pepSequence.length() - 1 - a));
+            bIons[a] = PROTON + bValue;
+            bplusplusIons[a] = (PROTON * 2.0 + bValue) / 2.0;
+            yIons[a] = PROTON + yValue;
+            yplusplusIons[a] = (PROTON * 2.0 + yValue) / 2.0;
+            a++;
         }
+
+        resultMap.put("y", yIons);
+        resultMap.put("y++", yplusplusIons);
+        resultMap.put("b", bIons);
+        resultMap.put("b++", bplusplusIons);
+
+        return resultMap;
     }
 
     public double getAAMass(char c) {

@@ -27,44 +27,22 @@ public class MatchCallable implements Callable<Double> {
         int indexTarget = 0;
         int fragmentMatch = 0;
 
-        double decoyIon = decoyIons[0];
-        double targetIon = targetIons[0];
-
         while (true) {
-            if (targetIon <= decoyIon + tolerance && targetIon >= decoyIon - tolerance) {
+            if (targetIons[indexTarget] > decoyIons[indexDecoy] + tolerance) {
+                indexDecoy++;
+            } else if (targetIons[indexTarget] < decoyIons[indexDecoy] - tolerance) {
+                indexTarget++;
+            } else {
                 fragmentMatch++;
                 indexTarget++;
                 indexDecoy++;
-
-                if (indexDecoy >= decoyIons.length || indexTarget >= targetIons.length) {
-                    break;
-                }
-
-                decoyIon = decoyIons[indexDecoy];
-                targetIon = targetIons[indexTarget];
-
-            } else if (targetIon > decoyIon + tolerance) {
-                indexDecoy++;
-
-                if (indexDecoy >= decoyIons.length) {
-                    break;
-                }
-
-                decoyIon = decoyIons[indexDecoy];
-            } else if (targetIon < decoyIon - tolerance) {
-                indexTarget++;
-
-                if (indexTarget >= targetIons.length) {
-                    break;
-                }
-
-                targetIon = targetIons[indexTarget];
             }
-
+            if (indexDecoy >= decoyIons.length || indexTarget >= targetIons.length) {
+                break;
+            }
         }
 
         double cosineSimilarity = fragmentMatch / (Math.sqrt(targetIons.length) * Math.sqrt(decoyIons.length));
-
         return cosineSimilarity;
     }
 

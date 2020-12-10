@@ -15,10 +15,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,6 +70,10 @@ public class App {
 		threads.setRequired(false);
 		options.addOption(threads);
 
+		Option fragment = new Option("r", "fragment", true, "Fragment a given Peptide");
+		fragment.setRequired(false);
+		options.addOption(fragment);
+
 		CommandLineParser parser = new DefaultParser();
 		HelpFormatter formatter = new HelpFormatter();
 		CommandLine cmd = null;
@@ -98,7 +104,27 @@ public class App {
 
 		long startTime = System.currentTimeMillis();
 
-		if (cmd.hasOption("read_fasta")) {
+		if (cmd.hasOption("fragment")) {
+			String sequence = cmd.getOptionValue("fragment");
+			PrettyFragmentationCallable call = new PrettyFragmentationCallable(sequence);
+			ExecutorService threadPool = Executors.newFixedThreadPool(1);
+			Future<Map<String, double[]>> future = threadPool.submit(call);
+			threadPool.shutdown();
+
+			Map<String, double[]> resultMap = null;
+			try {
+				resultMap = future.get();
+				System.out.println("Sequence: " + sequence);
+				System.out.println("Y Ions: " + Arrays.toString(resultMap.get("y")));
+				System.out.println("Y++ Ions: " + Arrays.toString(resultMap.get("y++")));
+				System.out.println("B Ions: " + Arrays.toString(resultMap.get("b")));
+				System.out.println("B++ Ions: " + Arrays.toString(resultMap.get("b++")));
+			} catch (InterruptedException | ExecutionException e) {
+				System.out.println("Fragmentation failed!");
+				e.printStackTrace();
+			}
+		}
+		else if (cmd.hasOption("read_fasta")) {
 			File batchDir = new File("tmp_batches");
 			if (!batchDir.exists())
 				batchDir.mkdir();
@@ -175,7 +201,7 @@ public class App {
 			File csv = new File(filePath);
 			MascotCSVReader reader = new MascotCSVReader(csv);
 			try {
-				System.out.println(reader.getPeptides(targetFolder.toString() +  "/" + fileName + ".pep"));
+				System.out.println(reader.getPeptides(targetFolder.toString() + "/" + fileName + ".pep"));
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -196,6 +222,24 @@ public class App {
 				for (String key : res.cosineSimilarityMap.keySet()) {
 					System.out.println(key + " " + res.cosineSimilarityMap.get(key) + " " + res.mascotScoreMap.get(key)
 							+ " " + res.fragmentMatchMap.get(key));
+				}
+
+				final List<String[]> resultcsv = new ArrayList<>();
+				resultcsv.add(new String[] { "sequence", "cosinesimilarity", "mascotscore", "fragmentmatches", "xtandem" });
+				for (String key : res.cosineSimilarityMap.keySet()) {
+					resultcsv.add(new String[] { key, Double.toString(res.cosineSimilarityMap.get(key)),
+							Double.toString(res.mascotScoreMap.get(key)),
+							Integer.toString(res.fragmentMatchMap.get(key)),
+							Double.toString(res.xTandemMap.get(key)),
+						});
+				}
+
+				final CSVWriter writer = new CSVWriter();
+				try {
+					writer.createCSV(resultcsv, "mascotresult.csv");
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 
 			} catch (InterruptedException e) {
